@@ -1,0 +1,25 @@
+spring:
+  r2dbc:
+    # url: r2dbc:postgresql://localhost:5432/filedb
+    username: postgres
+    password: 1417
+  transaction:
+    rollback-on-commit-failure: true
+
+jwt:
+  secret: ${JWT_SECRET:SomethingExceptionallyEnormouslyLongThatHopefullyDoesNotAppearInAnyDictionary}}
+  expiration: 86400000  # 24 hours
+  
+logging:
+  level:
+    server: DEBUG
+    server.security: DEBUG
+    reactor.netty: DEBUG
+    org.springframework.security: TRACE
+    org.springframework.web: TRACE
+    io.r2dbc.postgresql: DEBUG
+    io.jsonwebtoken: DEBUG
+    # org.springframework.boot.autoconfigure: DEBUG
+
+storage:
+  path: ./uploads
