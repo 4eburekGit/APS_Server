@@ -1,0 +1,74 @@
+services:
+
+  db:
+    image: postgres:16-alpine
+    container_name: aps-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-1417}
+      POSTGRES_DB:       ${POSTGRES_DB:-filedb}
+    volumes:
+      - aps_db_data:/var/lib/postgresql/data
+      # Schema dump auto-runs on first init only (when data dir is empty)
+      - ./filedb.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-filedb}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aps-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # ---- DB (R2DBC, reactive) ----
+      # NB: backend builds ConnectionFactory manually from these split properties
+      # (Main.java uses @Value for spring.r2dbc.host / port / database / ...)
+      SPRING_R2DBC_DRIVER:   postgresql
+      SPRING_R2DBC_HOST:     db
+      SPRING_R2DBC_PORT:     "5432"
+      SPRING_R2DBC_DATABASE: ${POSTGRES_DB:-filedb}
+      SPRING_R2DBC_USERNAME: ${POSTGRES_USER:-postgres}
+      SPRING_R2DBC_PASSWORD: ${POSTGRES_PASSWORD:-1417}
+      # ---- JWT (no default; provision via .env or shell env) ----
+      # Generate one with `openssl rand -base64 48` and put it in .env
+      JWT_SECRET:     ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      # ---- Admin bootstrap (creates first admin on startup if missing) ----
+      # Both must be set; if either is unset we skip provisioning. After the
+      # first admin exists, rotate via POST /auth/register/admin.
+      ADMIN_BOOTSTRAP_USERNAME: ${ADMIN_BOOTSTRAP_USERNAME:-}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
+      # ---- File storage ----
+      STORAGE_PATH:  /app/uploads
+      STORAGE_QUOTA: ${STORAGE_QUOTA:-10737418240}
+      # ---- JVM ----
+      JAVA_OPTS:     ${JAVA_OPTS:--Xms256m -Xmx1g}
+    volumes:
+      - aps_uploads:/app/uploads
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aps-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  aps_db_data:
+  aps_uploads:
