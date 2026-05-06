@@ -89,9 +89,20 @@
         <groupId>org.projectlombok</groupId>
         <artifactId>lombok</artifactId>
       </dependency>
+      <!-- Test dependencies -->
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>io.projectreactor</groupId>
+        <artifactId>reactor-test</artifactId>
+        <scope>test</scope>
+      </dependency>
   </dependencies>
   <build>
-    <sourceDirectory>src</sourceDirectory>
+    <sourceDirectory>src/main/java</sourceDirectory>
     <plugins>
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
@@ -143,6 +154,34 @@
 	     	  <include>**/*Test.java</include>
 	    	</includes>
  	    </configuration>
+	</plugin>
+	<plugin>
+		<groupId>org.jacoco</groupId>
+		<artifactId>jacoco-maven-plugin</artifactId>
+		<version>0.8.12</version>
+		<configuration>
+			<excludes>
+				<exclude>server/Main.class</exclude>
+				<exclude>server/SecurityController.class</exclude>
+				<exclude>server/TransactionConfig.class</exclude>
+				<exclude>server/JWTService.class</exclude>
+				<exclude>server/repository/**</exclude>
+			</excludes>
+		</configuration>
+		<executions>
+			<execution>
+				<goals>
+					<goal>prepare-agent</goal>
+				</goals>
+			</execution>
+			<execution>
+				<id>report</id>
+				<phase>test</phase>
+				<goals>
+					<goal>report</goal>
+				</goals>
+			</execution>
+		</executions>
 	</plugin>
 
     </plugins>

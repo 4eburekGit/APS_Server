@@ -1,0 +1,18 @@
+spring:
+  r2dbc:
+    url: r2dbc:h2:mem:///testdb;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  security:
+    user:
+      name: test
+      password: test
+
+jwt:
+  secret: TestSecretKeyThatIsLongEnoughForHmacSha256Algorithm1234
+  expiration: 3600000
+
+logging:
+  level:
+    root: WARN
+    server: DEBUG
