@@ -53,7 +53,16 @@ public class JWTHandler {
     }
 
     public String generateToken(UserDetails userDetails) {
+        // Stamp the principal's role into the JWT. Without it the frontend
+        // can't tell an admin from a user purely from the token, which let
+        // the admin slip into routes guarded by <UserOnly> and bounce back
+        // out of /admin (Admin.jsx checks user.role).
         Map<String, Object> claims = new HashMap<>();
+        String role = userDetails.getAuthorities().stream()
+                .map(a -> a.getAuthority())
+                .findFirst()
+                .orElse("ROLE_USER");
+        claims.put("role", role);
         return createToken(claims, userDetails.getUsername());
     }
 

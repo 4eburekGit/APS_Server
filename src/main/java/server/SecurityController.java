@@ -9,6 +9,9 @@ import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.web.server.authentication.HttpStatusServerEntryPoint;
+import org.springframework.security.web.server.authorization.HttpStatusServerAccessDeniedHandler;
 import org.springframework.security.authentication.ReactiveAuthenticationManager;
 import org.springframework.security.authentication.UserDetailsRepositoryReactiveAuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -93,8 +96,16 @@ public class SecurityController {
                 .securityContextRepository(NoOpServerSecurityContextRepository.getInstance())
                 .authorizeExchange(exchanges -> exchanges
                        .pathMatchers("/auth/**").permitAll()
+                       .pathMatchers("/admin/**").hasRole("ADMIN")
                        .anyExchange().authenticated()
                 )
+                // Default entry/deny points emit `WWW-Authenticate: Basic`,
+                // which the browser converts into a native popup. Replace
+                // them with plain status responses so unauth/forbidden
+                // failures stay in the JSON layer for the SPA to handle.
+                .exceptionHandling(eh -> eh
+                        .authenticationEntryPoint(new HttpStatusServerEntryPoint(HttpStatus.UNAUTHORIZED))
+                        .accessDeniedHandler(new HttpStatusServerAccessDeniedHandler(HttpStatus.FORBIDDEN)))
                 .addFilterAt(new JWTAuthFilter(jwtHandler, userDetailsService), SecurityWebFiltersOrder.AUTHENTICATION)
                 .build();
     }

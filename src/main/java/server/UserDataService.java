@@ -7,6 +7,7 @@ import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
+import server.repository.AdminRepo;
 import server.repository.UserRepo;
 
 @Service
@@ -15,13 +16,15 @@ import server.repository.UserRepo;
 public class UserDataService implements ReactiveUserDetailsService {
 
     private final UserRepo userRepository;
+    private final AdminRepo adminRepository;
 
     @Override
     public Mono<UserDetails> findByUsername(String username) {
-        log.debug("Looking up user: {}", username);
+        log.debug("Looking up principal: {}", username);
         return userRepository.findByUsername(username)
-                .doOnNext(user -> log.debug("Found user: {}", user))
-                .switchIfEmpty(Mono.fromRunnable(() -> log.warn("User not found: {}", username)))
-                .cast(UserDetails.class);
+                .<UserDetails>cast(UserDetails.class)
+                .switchIfEmpty(adminRepository.findByUsername(username).cast(UserDetails.class))
+                .doOnNext(principal -> log.debug("Found principal: {} ({})", principal.getUsername(), principal.getAuthorities()))
+                .switchIfEmpty(Mono.fromRunnable(() -> log.warn("Principal not found: {}", username)));
     }
 }

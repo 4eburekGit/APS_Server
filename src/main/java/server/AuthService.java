@@ -35,10 +35,15 @@ public class AuthService {
     }
 
     public Mono<String> login(String username, String password) {
+        // Unified login: accepts both regular users and admins. The auth manager
+        // (backed by UserDataService, which searches `users` then `admins`) picks
+        // whichever table holds the credentials. The JWT carries the matched
+        // principal's role claim, so the SPA can route based on it without the
+        // user having to tell us upfront which kind of account they have.
         return authenticationManager.authenticate(
                         new UsernamePasswordAuthenticationToken(username, password)
                 )
-                .map(auth -> (UserEntity) auth.getPrincipal())
+                .map(auth -> (IdentifiedPrincipal) auth.getPrincipal())
                 .map(jwtHandler::generateToken);
     }
     
@@ -53,11 +58,13 @@ public class AuthService {
                 .map(saved -> jwtHandler.generateToken(saved));
     }
 
+    /**
+     * @deprecated kept for backward compatibility — {@link #login(String, String)}
+     * now accepts both user and admin credentials. New callers should use the
+     * unified endpoint and route based on the JWT's {@code role} claim.
+     */
+    @Deprecated
     public Mono<String> loginAdmin(String username, String password) {
-        return authenticationManager.authenticate(
-                        new UsernamePasswordAuthenticationToken(username, password)
-                )
-                .map(auth -> (AdminEntity) auth.getPrincipal())
-                .map(jwtHandler::generateToken);
+        return login(username, password);
     }
 }

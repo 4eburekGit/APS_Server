@@ -13,7 +13,7 @@ import java.util.UUID;
 
 @Data
 @Table("users")
-public class UserEntity implements UserDetails {
+public class UserEntity implements UserDetails, IdentifiedPrincipal {
     @Id
     private UUID id;
     private String username;
