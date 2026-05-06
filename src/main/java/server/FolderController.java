@@ -110,6 +110,36 @@ public class FolderController {
                     });
     }
     
+    public Mono<Void> restoreFolder(UUID folderId) {
+        return getCurrentUserId()
+                .flatMap(userId -> folderRepository.findByIdAndOwnerId(folderId, userId)
+                		.switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Folder not found or access denied")))
+                )
+                .flatMap(folder -> {
+                    Flux<FolderEntity> allSubs = getAllDescendantFolders(folder, folder.getOwnerId());
+                    return allSubs
+                        	.collectList()
+                        	.flatMapMany(list -> {
+                        	    Collections.reverse(list);
+                        	    return Flux.fromIterable(list);
+                        	})
+                            .concatMap(subfolder -> {
+                                log.info("Folder list contents in order: " + subfolder.getName());
+                                return restoreFilesInFolder(subfolder.getId(), subfolder.getOwnerId())
+                                	.then(markRestored(subfolder));
+                            }).collectList().then();
+                    });
+    }
+    
+    private Mono<Void> markRestored(FolderEntity folder) {
+    	return databaseClient.sql("UPDATE folders SET deleted_at = :deletedAt WHERE id = :id")
+    			.bindNull("deletedAt", Instant.class)
+    			.bind("id", folder.getId())
+    			.fetch()
+    			.rowsUpdated()
+    			.then();
+    }
+    
     private Mono<Void> markDeleted(FolderEntity folder) {
     	return databaseClient.sql("UPDATE folders SET deleted_at = :deletedAt WHERE id = :id")
     			.bind("deletedAt", Instant.now())
@@ -119,6 +149,16 @@ public class FolderController {
     			.then();
     }
 
+    private Mono<Void> restoreFilesInFolder(UUID folderId, UUID userId) {
+    	log.info("Restoring files in folder: "+folderId.toString());
+        return metadataRepository.findByOwnerIdAndFolderId(userId, folderId)
+                .concatMap(file -> {
+                	log.info("Restoring file: "+file.getFilename());
+                    return storageCtl.restoreFile(file.getId());
+                }).subscribeOn(Schedulers.boundedElastic()).collectList()
+                .then();
+    }
+    
     private Mono<Void> deleteFilesInFolder(UUID folderId, UUID userId) {
     	log.info("Deleting files in folder: "+folderId.toString());
         return metadataRepository.findByOwnerIdAndFolderId(userId, folderId)

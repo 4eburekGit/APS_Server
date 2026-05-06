@@ -6,7 +6,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
-import server.repository.AdminRepo;
 import server.repository.UserRepo;
 
 @Service
@@ -15,7 +14,7 @@ import server.repository.UserRepo;
 public class AuthService {
 
     private final UserRepo userRepository;
-    private final AdminRepo adminRepository;
+    // private final AdminRepo adminRepository;
     private final PasswordEncoder passwordEncoder;
     private final JWTHandler jwtHandler;
     private final ReactiveAuthenticationManager authenticationManager;
@@ -42,7 +41,8 @@ public class AuthService {
                 .map(jwtHandler::generateToken);
     }
     
-    // ADMIN
+    // ADMIN -- DEPRECATED
+    /*
     
     public Mono<String> registerAdmin(String username, String password) {
         AdminEntity user = new AdminEntity();
@@ -60,4 +60,5 @@ public class AuthService {
                 .map(auth -> (AdminEntity) auth.getPrincipal())
                 .map(jwtHandler::generateToken);
     }
+    */
 }

@@ -19,11 +19,13 @@ import reactor.core.scheduler.Schedulers;
 import server.repository.FileMetaRepo;
 import server.repository.FolderRepo;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
@@ -54,7 +56,6 @@ public class StorageController {
     public Mono<FileMetaEntity> saveFile(FilePart filePart, UUID folderId) throws RuntimeException {
         return ReactiveSecurityContextHolder.getContext()
                 .map(ctx -> (UserEntity) ctx.getAuthentication().getPrincipal())
-                .single()
                 .flatMap(currentUser -> {
                     log.debug("Current user: {}", currentUser.getUsername());
 
@@ -82,96 +83,107 @@ public class StorageController {
                                             .subscribeOn(Schedulers.boundedElastic())
                                             .flatMap(path -> {
                                             	log.debug("Checking size quota");
-                                            	Mono<Long> added = filePart.content().map(dataB -> {
-                                            		long size = dataB.readableByteCount();
-                                            		DataBufferUtils.release(dataB);
-                                            		return size;
-                                            	}).reduce((long)0, (acc,val)->{ return (long) (acc+val); }); // what the fuck, why can't you infer that it is Mono<Long> without those stupid typcasts
-                                            	log.debug("Collecting taken space");
-                                            	
-                                            	Mono<Long> total = databaseClient.sql("SELECT sum(size) FROM metadata WHERE " +
-                                                        "owner_id = :ownerId AND deleted_at IS NULL")
-                                                .bind("ownerId", currentUser.getId()).map(row -> row.get(0,Long.class)).first();
-                                               
-                                            	total.zipWith(added).flatMap(sizes -> {
-                                            		if (sizes.getT1()+sizes.getT2() > storageQuota) { // 10GB
-                                            			return Mono.just(Boolean.TRUE); // Exceeds
-                                            		}
-                                            		else {
-                                            			return Mono.just(Boolean.FALSE); // Passed
-                                            		}
-                                            	}).subscribe(value->{ if(value.booleanValue()) { 
-                                            		  log.error("Capacity exceeded");
-                                            		  throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Size exceeds user capacity");
-                                            		}
-                                            	else {
-                                            		
-                                            	}
-                                            	});
-                                            	
-                                                log.debug("Quota not exceeded, starting file transfer");
-                                                return filePart.transferTo(path)
-                                                        .doOnSuccess(v -> log.debug("File transfer completed"))
-                                                        .doOnError(e -> log.error("File transfer failed", e))
-                                                        .then(Mono.fromCallable(() -> {
-                                                            long size = Files.size(path);
-                                                            log.debug("File size: {}", size);
-                                                            return size;
-                                                        }).subscribeOn(Schedulers.boundedElastic()));
-                                            })
-                                            .flatMap(size -> {
-                                                FileMetaEntity metadata = new FileMetaEntity();
-                                                metadata.setId(UUID.fromString(fileId));
-                                                metadata.setFilename(originalFilename);
-                                                metadata.setContentType(filePart.headers().getContentType().toString());
-                                                metadata.setSize(size);
-                                                metadata.setStoragePath(targetPath.toString());
-                                                metadata.setUploadedAt(Instant.now());
-                                                metadata.setOwnerId(currentUser.getId());
-                                                metadata.setFolderId(folderId);
-
-                                                log.debug("Saving metadata to DB: {}", metadata);
-                                                if (folderId == null) {
-                                                	return databaseClient.sql("INSERT INTO metadata " +
-                                                            "(id, filename, content_type, size, storage_path, uploaded_at, owner_id, folder_id) " +
-                                                            "VALUES (:id, :filename, :contentType, :size, :storagePath, :uploadedAt, :ownerId, :folderId)")
-                                                    .bind("id", metadata.getId())
-                                                    .bind("filename", metadata.getFilename())
-                                                    .bind("contentType", metadata.getContentType())
-                                                    .bind("size", metadata.getSize())
-                                                    .bind("storagePath", metadata.getStoragePath())
-                                                    .bind("uploadedAt", metadata.getUploadedAt())
-                                                    .bind("ownerId", metadata.getOwnerId())
-                                                    .bindNull("folderId", UUID.class)
-                                                    .filter((statement, executeFunction) -> statement.returnGeneratedValues("id").execute())
-                                                    .fetch()
-                                                    .first()
-                                                    .map(row -> {
-                                                        return metadata;
-                                                    });
-                                                }
-                                                else {
-                                                	return databaseClient.sql("INSERT INTO metadata " +
-                                                            "(id, filename, content_type, size, storage_path, uploaded_at, owner_id, folder_id) " +
-                                                            "VALUES (:id, :filename, :contentType, :size, :storagePath, :uploadedAt, :ownerId, :folderId)")
-                                                    .bind("id", metadata.getId())
-                                                    .bind("filename", metadata.getFilename())
-                                                    .bind("contentType", metadata.getContentType())
-                                                    .bind("size", metadata.getSize())
-                                                    .bind("storagePath", metadata.getStoragePath())
-                                                    .bind("uploadedAt", metadata.getUploadedAt())
-                                                    .bind("ownerId", metadata.getOwnerId())
-                                                    .bind("folderId", metadata.getFolderId())
-                                                    .filter((statement, executeFunction) -> statement.returnGeneratedValues("id").execute())
-                                                    .fetch()
-                                                    .first()
-                                                    .map(row -> {
-                                                        return metadata;
-                                                    });
-                                                }
+                                            	return filePart
+                                            			.content()
+                                            			.map(dataB -> {
+                                            				log.info("Checking readable byte count");
+		                                            		long size = dataB.readableByteCount();
+		                                            		DataBufferUtils.release(dataB);
+		                                            		log.info("Released buffer, size acquired: "+size);
+		                                            		return size;
+                                            			}).reduce((long)0, (acc,val)->{ return (long) (acc+val); }) // what the fuck, why can't you infer that it is Mono<Long> without those stupid typcasts
+                                            			.flatMap(added -> {
+                                            				log.debug("Collecting taken space");
+                                            				return databaseClient.sql("SELECT coalesce(sum(size),0) FROM metadata WHERE " +
+                                                                    "owner_id = :ownerId AND deleted_at IS NULL")
+		                                                            .bind("ownerId", currentUser.getId())
+		                                                            .map((row,rowMeta) -> row.get(0,Long.class))
+		                                                            .one()
+		                                                            .switchIfEmpty(Mono.just((long)0))
+		                                                            .flatMap(row -> {
+		                                                            	if (row == null) {
+		                                                            		return Mono.just((long)0);
+		                                                            	}
+		                                                            	return Mono.just(row);
+		                                                            })
+		                                                            .flatMap(total -> {
+		                                                            	log.info("Checking storage Quota, total = "+total+" added = "+added);
+		                                                            	if (total+added > storageQuota) { // 10GB
+		                                                            		log.error("Capacity exceeded");
+			                                                        		throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Size exceeds user capacity");
+		                                                        		}
+		                                                        		else {
+		                                                        			log.debug("Quota not exceeded, starting file transfer");
+		                                                        			return Mono.just(Boolean.TRUE)
+		                                                        					.flatMap(result -> {
+		                                                        						return filePart.transferTo(path)
+		            		                                                                    .doOnSuccess(v -> log.debug("File transfer completed"))
+		            		                                                                    .doOnError(e -> log.error("File transfer failed", e))
+		            		                                                                    .then(Mono.fromCallable(() -> {
+		            		                                                                        long size = Files.size(path);
+		            		                                                                        log.debug("File size: {}", size);
+		            		                                                                        return size;
+		            		                                                                    }).subscribeOn(Schedulers.boundedElastic()));
+		            		                                                        })
+										                                            .flatMap(size -> {
+										                                                FileMetaEntity metadata = new FileMetaEntity();
+										                                                metadata.setId(UUID.fromString(fileId));
+										                                                metadata.setFilename(originalFilename);
+										                                                metadata.setContentType(filePart.headers().getContentType().toString());
+										                                                metadata.setSize(size);
+										                                                metadata.setStoragePath(targetPath.toString());
+										                                                metadata.setUploadedAt(Instant.now());
+										                                                metadata.setOwnerId(currentUser.getId());
+										                                                metadata.setFolderId(folderId);
+										
+										                                                log.debug("Saving metadata to DB: {}", metadata);
+										                                                if (folderId == null) {
+										                                                	return databaseClient.sql("INSERT INTO metadata " +
+										                                                            "(id, filename, content_type, size, storage_path, uploaded_at, owner_id, folder_id) " +
+										                                                            "VALUES (:id, :filename, :contentType, :size, :storagePath, :uploadedAt, :ownerId, :folderId)")
+										                                                    .bind("id", metadata.getId())
+										                                                    .bind("filename", metadata.getFilename())
+										                                                    .bind("contentType", metadata.getContentType())
+										                                                    .bind("size", metadata.getSize())
+										                                                    .bind("storagePath", metadata.getStoragePath())
+										                                                    .bind("uploadedAt", metadata.getUploadedAt())
+										                                                    .bind("ownerId", metadata.getOwnerId())
+										                                                    .bindNull("folderId", UUID.class)
+										                                                    .filter((statement, executeFunction) -> statement.returnGeneratedValues("id").execute())
+										                                                    .fetch()
+										                                                    .first()
+										                                                    .map(row -> {
+										                                                        return metadata;
+										                                                    });
+										                                                }
+										                                                else {
+										                                                	return databaseClient.sql("INSERT INTO metadata " +
+										                                                            "(id, filename, content_type, size, storage_path, uploaded_at, owner_id, folder_id) " +
+										                                                            "VALUES (:id, :filename, :contentType, :size, :storagePath, :uploadedAt, :ownerId, :folderId)")
+										                                                    .bind("id", metadata.getId())
+										                                                    .bind("filename", metadata.getFilename())
+										                                                    .bind("contentType", metadata.getContentType())
+										                                                    .bind("size", metadata.getSize())
+										                                                    .bind("storagePath", metadata.getStoragePath())
+										                                                    .bind("uploadedAt", metadata.getUploadedAt())
+										                                                    .bind("ownerId", metadata.getOwnerId())
+										                                                    .bind("folderId", metadata.getFolderId())
+										                                                    .filter((statement, executeFunction) -> statement.returnGeneratedValues("id").execute())
+										                                                    .fetch()
+										                                                    .first()
+										                                                    .map(row -> {
+										                                                        return metadata;
+										                                                    });
+	            		                                                        		}
+	            		                                                            });
+	                                                        			}
+		                                                            });
+	                                                          
+                                            			});
                                             });
+                	
                                 });
-                    });
+            			});
                 })
                 .doOnSuccess(m -> {
                     if (m == null) {
@@ -186,7 +198,6 @@ public class StorageController {
     public Mono<FileMetaEntity> updateFile(UUID fileId, FilePart filePart) throws RuntimeException {
         return ReactiveSecurityContextHolder.getContext()
                 .map(ctx -> (UserEntity) ctx.getAuthentication().getPrincipal())
-                .single()
                 .flatMap(currentUser -> {
                     log.debug("Current user: {}", currentUser.getUsername());
                     return metadataRepository.findByIdAndOwnerId(fileId,currentUser.getId())
@@ -215,72 +226,76 @@ public class StorageController {
 		                                                        .subscribeOn(Schedulers.boundedElastic())
 		                                                        .flatMap(path -> {
 		                                                        	log.debug("Checking size quota");
-		                                                        	Mono<Long> added = filePart.content().map(dataB -> {
+		                                                        	return filePart.content().map(dataB -> {
 		                                                        		long size = dataB.readableByteCount();
 		                                                        		DataBufferUtils.release(dataB);
 		                                                        		return size;
-		                                                        	}).reduce((long)0, (acc,val)->{ return (long) (acc+val); }); // what the fuck, why can't you infer that it is Mono<Long> without those stupid typcasts
-		                                                        	log.debug("Collecting taken space");
-		                                                        	
-		                                                        	Mono<Long> total = databaseClient.sql("SELECT sum(size) FROM metadata WHERE " +
-		                                                                    "owner_id = :ownerId AND NOT id = :id AND deleted_at IS NULL")
-		                                                            .bind("ownerId", currentUser.getId())
-		                                                            .bind("id", file.getId())
-		                                                            .map(row -> row.get(0,Long.class)).first();
-		                                                           
-		                                                        	total.zipWith(added).flatMap(sizes -> {
-		                                                        		if (sizes.getT1()+sizes.getT2() > storageQuota) { // 10GB
-		                                                        			return Mono.just(Boolean.TRUE); // Exceeds
-		                                                        		}
-		                                                        		else {
-		                                                        			return Mono.just(Boolean.FALSE); // Passed
-		                                                        		}
-		                                                        	}).subscribe(value->{ if(value.booleanValue()) { 
-		                                                        		  log.error("Capacity exceeded");
-		                                                        		  throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Size exceeds user capacity");
-		                                                        		}
-		                                                        	else {
-		                                                        		
-		                                                        	}
-		                                                        	});
-		                                                        	
-		                                                            log.debug("Quota not exceeded, starting file transfer");
-		                                                            return filePart.transferTo(path)
-		                                                                    .doOnSuccess(v -> log.debug("File transfer completed"))
-		                                                                    .doOnError(e -> log.error("File transfer failed", e))
-		                                                                    .then(Mono.fromCallable(() -> {
-		                                                                        long size = Files.size(path);
-		                                                                        log.debug("File size: {}", size);
-		                                                                        return size;
-		                                                                    }).subscribeOn(Schedulers.boundedElastic()));
-		                                                        })
-		                                                        .flatMap(size -> {
-		                                                        	file.setFilename(newFilename);
-		                                                        	file.setSize(size);
-		                                                        	
-		                                                            log.debug("Updating metadata: {}", file);
-		                                                            return databaseClient.sql("UPDATE metadata SET " +
-		                                                                    "filename = :filename " +
-		                                                                    "content_type = :contentType " +
-		                                                                    "size = :size " +
-		                                                                    "WHERE id = :id")
-		                                                            .bind("id", file.getId())
-		                                                            .bind("filename", newFilename)
-		                                                            .bind("contentType", file.getContentType())
-		                                                            .bind("size", size)
-		                                                            .filter((statement, executeFunction) -> statement.returnGeneratedValues("id").execute())
-		                                                            .fetch()
-		                                                            .first()
-		                                                            .switchIfEmpty(Mono.error(new RuntimeException("Could not update db")));
-		                                                        })
-		                                                        .flatMap(res -> {
-		                                                        	return Mono.just(file);
-		                                                        });
+		                                                        	}).reduce((long)0, (acc,val)->{ return (long) (acc+val); }) // what the fuck, why can't you infer that it is Mono<Long> without those stupid typcasts
+		                                                        			.flatMap(added -> {
+		                                                        				log.debug("Collecting taken space");
+		                                                        				return databaseClient.sql("SELECT coalesce(sum(size),0) FROM metadata WHERE " +
+		    		                                                                    "owner_id = :ownerId AND NOT id = :id AND deleted_at IS NULL")
+		            		                                                            .bind("ownerId", currentUser.getId())
+		            		                                                            .bind("id", file.getId())
+		            		                                                            .map((row,rowMeta) -> row.get(0,Long.class))
+		            		                                                            .one()
+		            		                                                            .switchIfEmpty(Mono.just((long)0))
+		            		                                                            .flatMap(row -> {
+		            		                                                            	if (row == null) {
+		            		                                                            		return Mono.just((long)0);
+		            		                                                            	}
+		            		                                                            	return Mono.just(row);
+		            		                                                            })
+		            		                                                            .flatMap(total -> {
+		            		                                                            	if (total+added > storageQuota) { // 10GB
+		            		                                                            		log.error("Capacity exceeded");
+		            			                                                        		throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Size exceeds user capacity");
+		            		                                                        		}
+		            		                                                        		else {
+		            		                                                        			log.debug("Quota not exceeded, starting file transfer");
+		            		                                                        			return Mono.just(Boolean.TRUE)
+		            		                                                        					.flatMap(result -> {
+		            		                                                        						return filePart.transferTo(path)
+		            		            		                                                                    .doOnSuccess(v -> log.debug("File transfer completed"))
+		            		            		                                                                    .doOnError(e -> log.error("File transfer failed", e))
+		            		            		                                                                    .then(Mono.fromCallable(() -> {
+		            		            		                                                                        long size = Files.size(path);
+		            		            		                                                                        log.debug("File size: {}", size);
+		            		            		                                                                        return size;
+		            		            		                                                                    }).subscribeOn(Schedulers.boundedElastic()));
+		            		            		                                                        })
+		            		            		                                                        .flatMap(size -> {
+		            		            		                                                        	file.setFilename(newFilename);
+		            		            		                                                        	file.setSize(size);
+		            		            		                                                        	
+		            		            		                                                            log.debug("Updating metadata: {}", file);
+		            		            		                                                            return databaseClient.sql("UPDATE metadata SET " +
+		            		            		                                                                    "filename = :filename " +
+		            		            		                                                                    "content_type = :contentType " +
+		            		            		                                                                    "size = :size " +
+		            		            		                                                                    "WHERE id = :id")
+		            		            		                                                            .bind("id", file.getId())
+		            		            		                                                            .bind("filename", newFilename)
+		            		            		                                                            .bind("contentType", file.getContentType())
+		            		            		                                                            .bind("size", size)
+		            		            		                                                            .filter((statement, executeFunction) -> statement.returnGeneratedValues("id").execute())
+		            		            		                                                            .fetch()
+		            		            		                                                            .first()
+		            		            		                                                            .switchIfEmpty(Mono.error(new RuntimeException("Could not update db")));
+		            		            		                                                        })
+		            		            		                                                        .flatMap(res -> {
+		            		            		                                                        	return Mono.just(file);
+		            		            		                                                        });
+		            		                                                        		}
+		            		                                                            });
+		                                                        			});
+		                                                          
 		                                            });
 		                    			});
                     	
                     			});
-                		})
+                		});
+                })
                 .doOnSuccess(m -> {
                     if (m == null) {
                         log.error("Received null from save operation!");
@@ -347,7 +362,6 @@ public class StorageController {
     public Mono<Void> purgeFile(UUID id) throws RuntimeException {
         return ReactiveSecurityContextHolder.getContext()
                 .map(ctx -> (UserEntity) ctx.getAuthentication().getPrincipal())
-                .single()
                 .flatMap(currentUser -> {
                 	FileMetaEntity meta = new FileMetaEntity();
 
@@ -419,6 +433,217 @@ public class StorageController {
                     Collections.reverse(list);
                     return list.stream().map(FolderEntity::getName).collect(Collectors.toList());
                 });
+    }
+    
+    public Mono<FileMetaEntity> moveFile(UUID fileId, UUID newFolder) {
+    	return ReactiveSecurityContextHolder.getContext()
+    	        .map(ctx -> (UserEntity) ctx.getAuthentication().getPrincipal())
+    	        .flatMap(currentUser -> {
+    	        	log.info("Moving file: "+fileId+" to folder "+newFolder);
+    	        	return metadataRepository.findById(fileId)
+    	        			.switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "File "+fileId+" not found")))
+    	        			.flatMap(file -> {
+    	        				return folderRepository.findByIdAndOwnerId(newFolder, currentUser.getId())
+    	        						.switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Folder "+newFolder+" not found")))
+    	        						.flatMap(folder -> {
+    	        							return buildPhysicalPath(currentUser.getId(),folder)
+    	        									.map(path -> {
+    	        		    	        				if (Files.exists(path.resolve(file.getFilename()))) {
+    	        		    	        					throw new ResponseStatusException(HttpStatus.CONFLICT, "File with the name "+file.getFilename()+" already exists at "+path);
+    	        		    	        				}
+    	        		    	        				return path;
+    	        		    	        			})
+    	        									.flatMap(path -> {
+	    	        									try {
+	    	        										if (Files.exists(Path.of(file.getStoragePath()))) {
+	    	    	    		                            	Files.move(Paths.get(file.getStoragePath()),
+	    	    	    		                                		path.resolve(file.getFilename()),
+	    	    	    		                                		StandardCopyOption.REPLACE_EXISTING);
+	    	    	    		                                log.info("File "+fileId+" moved to folder: "+file.getStoragePath());
+	    	    	    		                                
+	    	    	    		                                file.setFolderId(newFolder);
+	    	    	    		                                return databaseClient.sql("UPDATE metadata SET storage_path = :storagePath, folder_id = :folderId  WHERE id = :fileId")
+	    	    	    		                                        .bind("storagePath", path.resolve(file.getFilename()).toString())
+	    	    	    		                                        .bind("folderId", newFolder)
+	    	    	    		                                		.bind("fileId", fileId)
+	    	    	    		                                		.fetch()
+	    	    	    		                                		.rowsUpdated()
+	    	    	    		                                		.flatMap(res -> {
+	    	    	    		                                			if(res == 0) {
+	    	    	    		                                				throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found");
+	    	    	    		                                			}
+	    	    	    		                                        	return Mono.just(file);
+	    	    	    		                                        });
+	    	    	    		                            }
+	    	    	    		                            else {
+	    	    	    		                            	throw new ResponseStatusException(HttpStatus.NOT_FOUND,"File with id = "+fileId+" doesn't exist");
+	    	    	    		                            }
+	    	    	    		                        } catch (IOException e) {
+	    	    	    		                            log.error("Failed to move file: {}", file.getStoragePath(), e);
+	    	    	    		                            throw new RuntimeException("Failed to move file", e);
+	    	    	    		                        }
+    	        									});
+    	        						});
+    	        			});
+    	        });
+    }
+    
+    public Mono<FileMetaEntity> copyFile(UUID fileId, UUID newFolder) {
+    	return ReactiveSecurityContextHolder.getContext()
+    	        .map(ctx -> (UserEntity) ctx.getAuthentication().getPrincipal())
+    	        .flatMap(currentUser -> {
+    	        	log.info("Copying file: "+fileId+" to folder "+newFolder);
+    	        	return metadataRepository.findById(fileId)
+    	        			.switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "File "+fileId+" not found")))
+    	        			.flatMap(file -> {
+    	        				return folderRepository.findByIdAndOwnerId(newFolder, currentUser.getId())
+    	        						.switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Folder "+newFolder+" not found")))
+    	        						.flatMap(folder -> {
+    	        							return buildPhysicalPath(currentUser.getId(),folder)
+    	        									.map(path -> {
+    	        		    	        				if (Files.exists(path.resolve(file.getFilename()))) {
+    	        		    	        					throw new ResponseStatusException(HttpStatus.CONFLICT, "File with the name "+file.getFilename()+" already exists at "+path);
+    	        		    	        				}
+    	        		    	        				return path;
+    	        		    	        			})
+    	        									.flatMap(path -> {
+	    	        									try {
+	    	        										if (Files.exists(Path.of(file.getStoragePath()))) {
+	    	    	    		                            	Files.copy(Paths.get(file.getStoragePath()),
+	    	    	    		                                		path.resolve(file.getFilename()),
+	    	    	    		                                		StandardCopyOption.REPLACE_EXISTING,
+	    	    	    		                                		StandardCopyOption.COPY_ATTRIBUTES,
+	    	    	    		                                		LinkOption.NOFOLLOW_LINKS);
+	    	    	    		                                log.info("File "+fileId+" copied to folder: "+file.getStoragePath());
+	    	    	    		                                return databaseClient.sql("INSERT INTO metadata " +
+	    	                                                            "(id, filename, content_type, size, storage_path, uploaded_at, owner_id, folder_id) " +
+	    	                                                            "VALUES (:id, :filename, :contentType, :size, :storagePath, :uploadedAt, :ownerId, :folderId)")
+			    	                                                    .bind("id", UUID.randomUUID())
+			    	                                                    .bind("filename", file.getFilename())
+			    	                                                    .bind("contentType", file.getContentType())
+			    	                                                    .bind("size", file.getSize())
+			    	                                                    .bind("storagePath", path.resolve(file.getFilename()).toString())
+			    	                                                    .bind("uploadedAt", Instant.now())
+			    	                                                    .bind("ownerId", file.getOwnerId())
+			    	                                                    .bind("folderId", newFolder)
+			    	                                                    .fetch()
+			    	                                                    .rowsUpdated()
+			    	    		                                		.flatMap(res -> {
+			    	    		                                			if(res == 0) {
+			    	    		                                				throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found");
+			    	    		                                			}
+			    	    		                                        	return Mono.just(file);
+			    	    		                                        });
+	    	    	    		                            }
+	    	    	    		                            else {
+	    	    	    		                            	throw new ResponseStatusException(HttpStatus.NOT_FOUND,"File with id = "+fileId+" doesn't exist");
+	    	    	    		                            }
+	    	    	    		                        } catch (IOException e) {
+	    	    	    		                            log.error("Failed to copy file: {}", file.getStoragePath(), e);
+	    	    	    		                            throw new RuntimeException("Failed to copy file", e);
+	    	    	    		                        }
+    	        									});
+    	        						});
+    	        			});
+    	        });
+    }
+    
+    public Mono<FileMetaEntity> renameFile(UUID fileId, String newName) {
+    	return ReactiveSecurityContextHolder.getContext()
+    	        .map(ctx -> (UserEntity) ctx.getAuthentication().getPrincipal())
+    	        .flatMap(currentUser -> {
+    	        	log.info("Renaming file: "+fileId+" to "+newName);
+    	        	return metadataRepository.findById(fileId)
+    	        			.switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "File "+fileId+" not found")))
+    	        			.map(file -> {
+    	        				if (Files.exists(Path.of(file.getStoragePath()).getParent().resolve(newName))) {
+    	        					throw new ResponseStatusException(HttpStatus.CONFLICT, "File with the name "+newName+" already exists");
+    	        				}
+    	        				return file;
+    	        			})
+    	        			.flatMap(file -> {
+    	        				try {
+									if (Files.exists(Path.of(file.getStoragePath()))) {
+		                            	Files.move(Paths.get(file.getStoragePath()),
+		                                		Paths.get(file.getStoragePath()).getParent().resolve(newName),
+		                                		StandardCopyOption.REPLACE_EXISTING);
+		                                log.info("File "+fileId+" moved to folder: "+file.getStoragePath());
+		                                return databaseClient.sql("UPDATE metadata SET storage_path = :storagePath, filename = :filename  WHERE id = :fileId")
+		                                        .bind("storagePath", Paths.get(file.getStoragePath()).getParent().resolve(newName).toString())
+		                                        .bind("filename",newName)
+		                                		.bind("fileId", fileId)
+		                                		.fetch()
+		                                		.rowsUpdated()
+		                                		.flatMap(res -> {
+		                                			if(res == 0) {
+		                                				throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found");
+		                                			}
+		                                        	return Mono.just(file);
+		                                        });
+		                            }
+		                            else {
+		                            	throw new ResponseStatusException(HttpStatus.NOT_FOUND,"File with id = "+fileId+" doesn't exist");
+		                            }
+		                        } catch (IOException e) {
+		                            log.error("Failed to copy file: {}", file.getStoragePath(), e);
+		                            throw new RuntimeException("Failed to copy file", e);
+		                        }
+    	        			});
+    	        });
+    }
+    
+    public Mono<FileMetaEntity> restoreFile(UUID id) {
+    	return ReactiveSecurityContextHolder.getContext()
+        .map(ctx -> (UserEntity) ctx.getAuthentication().getPrincipal())
+        .flatMap(currentUser -> {
+        	FileMetaEntity meta = new FileMetaEntity();
+
+            log.debug("Restoring file: {}", id);
+            return databaseClient.sql("SELECT * FROM metadata WHERE id = :fileId AND owner_id = :ownerId")
+                .bind("fileId", id)
+                .bind("ownerId", currentUser.getId())
+                .map(row -> {
+                    meta.setId(row.get("id", UUID.class));
+                    meta.setFilename(row.get("filename", String.class));
+                    meta.setContentType(row.get("content_type", String.class));
+                    meta.setSize(row.get("size", Long.class));
+                    meta.setStoragePath(row.get("storage_path", String.class));
+                    meta.setUploadedAt(row.get("uploaded_at", Instant.class));
+                    meta.setOwnerId(row.get("owner_id", UUID.class));
+                    meta.setFolderId(row.get("folder_id", UUID.class));
+                    meta.setDeletedAt(row.get("deleted_at",Instant.class));
+                    return meta;
+                })
+                .one()
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found or access denied")));
+        })
+        .flatMap(file -> {
+        	if (file.getDeletedAt() == null) {
+        		throw new ResponseStatusException(HttpStatus.FORBIDDEN,"File with id = "+file.getId()+" isn't deleted");
+        	}
+        	file.setDeletedAt(null);
+            return Mono.fromRunnable(() -> {
+                        try {
+                        	log.debug("Restoring file: {}",file.getId());
+                            if (!Files.exists(Path.of(file.getStoragePath()))) {
+                            	Files.move(Paths.get(storagePath,file.getOwnerId().toString()).resolve("bin_"+file.getOwnerId().toString()).resolve(file.getFilename()),
+                            			Paths.get(file.getStoragePath()),
+                                		StandardCopyOption.REPLACE_EXISTING);
+                                log.info("File restored from bin to: {}", file.getStoragePath());
+                            }
+                        } catch (IOException e) {
+                            log.error("Failed to restore file: {}", file.getStoragePath(), e);
+                            throw new RuntimeException("Failed to restore file", e);
+                        }
+                    })
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .then(databaseClient.sql("UPDATE metadata SET deleted_at = :deletedAt WHERE id = :fileId")
+                            .bindNull("deletedAt",Instant.class)
+                    		.bind("fileId", file.getId())
+                            .fetch()
+                            .rowsUpdated())
+                    .then(Mono.just(file));
+        });
     }
     
     public Mono<FileMetaEntity> getFileMetadata(UUID id) {

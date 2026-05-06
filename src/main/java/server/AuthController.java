@@ -39,6 +39,8 @@ public class AuthController {
                 .map(ctx -> (ctx.getAuthentication().getName() + "Role: " + ctx.getAuthentication().getAuthorities()));
     }
     
+    // ADMIN -- DEPRECATED
+    /*
     @PostMapping("/register/admin")
     public Mono<Map<String, String>> registerAdmin(@RequestBody AuthRequest request) {
     	return authService.registerAdmin(request.username(), request.password())
@@ -50,6 +52,6 @@ public class AuthController {
         return authService.loginAdmin(request.username(), request.password())
                 .map(token -> Map.of("token", token));
     }
-
+    */
     record AuthRequest(String username, String password) {}
 }

@@ -50,34 +50,34 @@ public class FileController {
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Mono<FileMetaEntity> updateFile(
             @RequestPart("file") Mono<FilePart> filePartMono,
-            @PathVariable UUID fileId) {
-        return filePartMono.flatMap(filePart -> storageController.updateFile(fileId, filePart));
+            @PathVariable UUID id) {
+        return filePartMono.flatMap(filePart -> storageController.updateFile(id, filePart));
     }
     
-    @PatchMapping("/{id}/rename") // STUB!!! - renames file to newName
+    @PatchMapping("/{id}/rename")
     public Mono<FileMetaEntity> renameFile(
     		@PathVariable UUID id,
     		@RequestBody String newName) {
-    	return storageController.getFileMetadata(id);
+    	return storageController.renameFile(id,newName);
     }
     
-    @PatchMapping("/{id}/move") // STUB!!! - moves file to folder = folderId
+    @PatchMapping("/{id}/move/to/{folderId}")
     public Mono<FileMetaEntity> moveFile(
     		@PathVariable UUID id,
-    		@RequestBody UUID folderId) {
-    	return storageController.getFileMetadata(id);
+    		@PathVariable UUID folderId) {
+    	return storageController.moveFile(id,folderId);
     }
     
-    @PostMapping("/{id}/copy") // STUB!!! - copies file to folder = folderid
+    @PostMapping("/{id}/copy/to/{folderId}")
     public Mono<FileMetaEntity> copyFile(
     		@PathVariable UUID id,
-    		@RequestBody UUID folderId) {
-    	return storageController.getFileMetadata(id);
+    		@PathVariable UUID folderId) {
+    	return storageController.copyFile(id,folderId);
     }
     
-    @PostMapping("/{id}/restore") // STUB!!! - restores file from the bin
+    @PostMapping("/{id}/restore")
     public Mono<FileMetaEntity> restoreFile(@PathVariable UUID id) {
-    	return storageController.getFileMetadata(id);
+    	return storageController.restoreFile(id);
     }
     
     @DeleteMapping("/{id}")
@@ -95,7 +95,7 @@ public class FileController {
     public Mono<ResponseEntity<String>> purgeFile(@PathVariable UUID id) {
     	return storageController.getFileMetadata(id)
     			.flatMap(metadata -> {
-    				return storageController.deleteFile(id);
+    				return storageController.purgeFile(id);
     			})
     			.flatMap(res -> {
     				return Mono.just(ResponseEntity.ok("Successfully purged file"));
@@ -156,6 +156,14 @@ public class FileController {
     	return folderController.deleteFolder(folderId)
     			.flatMap(res -> {
     				return Mono.just(ResponseEntity.ok("Successfully deleted folder"));
+    			});
+    }
+    
+    @PostMapping("/folders/{folderId}/restore")
+    public Mono<ResponseEntity<String>> restoreFolder(@PathVariable UUID folderId) {
+    	return folderController.restoreFolder(folderId)
+    			.flatMap(res -> {
+    				return Mono.just(ResponseEntity.ok("Successfully restored folder and its subfolders"));
     			});
     }
     

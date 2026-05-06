@@ -71,12 +71,7 @@ public class SecurityController {
 	                    );
 	                    return chain.filter(exchange)
 	                            .contextWrite(ReactiveSecurityContextHolder.withAuthentication(auth)).log("CONTEXT WRITTEN");
-	                })
-	                // .switchIfEmpty(Mono.defer(() -> {
-	                //    log.debug("No valid user for token, continuing without authentication");
-	                //    return chain.filter(exchange);
-	                // }))
-	                ;
+	                });
 	    }
 	}
 
