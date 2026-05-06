@@ -1,0 +1,26 @@
+spring:
+  r2dbc:
+    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:filedb}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}
+  transaction:
+    rollback-on-commit-failure: true
+
+jwt:
+  # MUST be supplied via JWT_SECRET env var. No default; app fails fast on
+  # missing or < 32-byte secret (see JWTHandler#getSigningKey).
+  secret: ${JWT_SECRET:}
+  expiration: ${JWT_EXPIRATION:86400000}  # 24 hours by default
+
+admin:
+  bootstrap:
+    username: ${ADMIN_BOOTSTRAP_USERNAME:}
+    password: ${ADMIN_BOOTSTRAP_PASSWORD:}
+
+logging:
+  level:
+    server: DEBUG
+    org.springframework.web.server.adapter.HttpWebHandlerAdapter: TRACE
+
+storage:
+  path: ${STORAGE_PATH:./uploads}
