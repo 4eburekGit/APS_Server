@@ -95,6 +95,11 @@ public class SecurityController {
                 .formLogin(formLogin -> formLogin.disable())
                 .securityContextRepository(NoOpServerSecurityContextRepository.getInstance())
                 .authorizeExchange(exchanges -> exchanges
+                       // Admin provisioning is privileged: only an existing
+                       // admin may create another. The very first admin is
+                       // bootstrapped at startup from environment variables
+                       // (see AdminBootstrap), never via this HTTP endpoint.
+                       .pathMatchers("/auth/register/admin").hasRole("ADMIN")
                        .pathMatchers("/auth/**").permitAll()
                        .pathMatchers("/admin/**").hasRole("ADMIN")
                        .anyExchange().authenticated()

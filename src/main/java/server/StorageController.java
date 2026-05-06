@@ -65,7 +65,10 @@ public class StorageController {
                                     .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND,"Folder not found or access denied")));
 
                     return folderMono.flatMap(folder -> {
-                        String originalFilename = filePart.filename();
+                        // Sanitize the uploaded filename so a malicious client
+                        // can't smuggle "../" segments and write outside the
+                        // user's storage directory.
+                        String originalFilename = PathSanitizer.sanitizeFilename(filePart.filename());
                         String fileId = UUID.randomUUID().toString();
                         String storedFilename = originalFilename;
 
@@ -177,7 +180,7 @@ public class StorageController {
                                         : folderRepository.findByIdAndOwnerId(file.getFolderId(), currentUser.getId())
                                                 .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Folder not found or access denied")));
 
-                                String newFilename = filePart.filename();
+                                String newFilename = PathSanitizer.sanitizeFilename(filePart.filename());
                                 return folderMono.flatMap(folder ->
                                         buildPhysicalPath(currentUser.getId(), folder)
                                                 .flatMap(userFolderPath -> {
@@ -410,9 +413,18 @@ public class StorageController {
                 });
     }
     
+    /**
+     * Owner-scoped metadata lookup. The previous implementation called
+     * {@code metadataRepository.findById(id)} with no ownership check, so any
+     * authenticated user could enumerate UUIDs and download other users' files
+     * (IDOR). All callers now route through {@link ReactiveSecurityContextHolder}
+     * and only see rows where {@code owner_id = current user}.
+     */
     public Mono<FileMetaEntity> getFileMetadata(UUID id) {
-        return metadataRepository.findById(id)
-                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND,"File "+id.toString()+" not found")));
+        return ReactiveSecurityContextHolder.getContext()
+                .map(ctx -> (IdentifiedPrincipal) ctx.getAuthentication().getPrincipal())
+                .flatMap(currentUser -> metadataRepository.findByIdAndOwnerId(id, currentUser.getId()))
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "File " + id.toString() + " not found")));
     }
 
     public Mono<Path> getFilePath(UUID id) {
@@ -421,6 +433,9 @@ public class StorageController {
     }
 
     public Mono<FileMetaEntity> renameFile(UUID id, String newName) {
+        // Reject path-traversal attempts (../, slashes, NULs, control chars)
+        // before they reach Path.resolve.
+        final String safeName = PathSanitizer.sanitizeFilename(newName);
         return ReactiveSecurityContextHolder.getContext()
                 .map(ctx -> (IdentifiedPrincipal) ctx.getAuthentication().getPrincipal())
                 .single()
@@ -432,12 +447,12 @@ public class StorageController {
                                 .flatMap(folder -> buildPhysicalPath(currentUser.getId(), folder))
                                 .flatMap(dir -> Mono.fromCallable(() -> {
                                     Path src = dir.resolve(file.getFilename());
-                                    Path dst = dir.resolve(newName);
+                                    Path dst = dir.resolve(safeName);
                                     if (Files.exists(src)) Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING);
                                     return dst;
                                 }).subscribeOn(Schedulers.boundedElastic()))
                                 .flatMap(dst -> {
-                                    file.setFilename(newName);
+                                    file.setFilename(safeName);
                                     file.setStoragePath(dst.toString());
                                     return metadataRepository.save(file);
                                 })

@@ -39,6 +39,15 @@ public class AuthController {
                 .map(ctx -> (ctx.getAuthentication().getName() + "Role: " + ctx.getAuthentication().getAuthorities()));
     }
     
+    /**
+     * Provision a new admin. Restricted at the security filter chain to
+     * existing admins only — the previous implementation was on the
+     * {@code /auth/**} permitAll path, so anyone could create themselves an
+     * admin account (privilege-escalation vulnerability). The very first
+     * admin must be bootstrapped via the {@code ADMIN_BOOTSTRAP_USERNAME} /
+     * {@code ADMIN_BOOTSTRAP_PASSWORD} environment variables (see
+     * {@link AdminBootstrap}).
+     */
     @PostMapping("/register/admin")
     public Mono<Map<String, String>> registerAdmin(@RequestBody AuthRequest request) {
     	return authService.registerAdmin(request.username(), request.password())

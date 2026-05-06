@@ -17,14 +17,33 @@ import java.util.function.Function;
 @Service
 public class JWTHandler {
 
-    @Value("${jwt.secret:SomethingExceptionallyEnormouslyLongThatHopefullyDoesNotAppearInAnyDictionary}") // TODO: Add application.properties
+    /**
+     * HMAC-SHA256 signing key. MUST be supplied via the {@code JWT_SECRET}
+     * environment variable (or {@code jwt.secret} property in tests). No
+     * default is provided in production: a committed default would let
+     * anyone with read access to the repo forge tokens. The application
+     * fails fast on boot if the key is missing or shorter than 32 bytes
+     * (the minimum HS256 requires).
+     */
+    @Value("${jwt.secret:}")
     private String secret;
 
-    @Value("${jwt.expiration:3600000}") // TODO: Same here
+    @Value("${jwt.expiration:3600000}")
     private Long expiration; // millis == 1 hour by default
 
     private SecretKey getSigningKey() {
-        return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException(
+                    "jwt.secret is not configured. Set the JWT_SECRET environment variable " +
+                    "to a random string of at least 32 bytes (e.g. `openssl rand -base64 48`).");
+        }
+        byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length < 32) {
+            throw new IllegalStateException(
+                    "jwt.secret is too short (" + bytes.length + " bytes); HS256 requires at least 32. " +
+                    "Generate a fresh value with `openssl rand -base64 48` and set JWT_SECRET.");
+        }
+        return Keys.hmacShaKeyFor(bytes);
     }
 
     public String extractUsername(String token) {

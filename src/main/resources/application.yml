@@ -1,17 +1,28 @@
 spring:
   r2dbc:
     driver: postgresql
-    host: localhost
-    port: 5432
-    database: filedb
-    username: postgres
-    password: 1417
+    host: ${DB_HOST:localhost}
+    port: ${DB_PORT:5432}
+    database: ${DB_NAME:filedb}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}
   transaction:
     rollback-on-commit-failure: true
 
 jwt:
-  secret: SomethingExceptionallyEnormouslyLongThatHopefullyDoesNotAppearInAnyDictionary
-  expiration: 86400000  # 24 hours
+  # MUST be supplied via JWT_SECRET env var. No default — a committed default
+  # would let anyone with repo read access forge tokens. App fails fast at
+  # boot if missing or < 32 bytes (see JWTHandler#getSigningKey).
+  secret: ${JWT_SECRET:}
+  expiration: ${JWT_EXPIRATION:86400000}  # 24 hours by default
+
+# Bootstraps the very first admin from environment variables. Both must be
+# set to provision; the row is idempotent across restarts. After bootstrap,
+# rotate via POST /auth/register/admin (requires admin auth) — not via env.
+admin:
+  bootstrap:
+    username: ${ADMIN_BOOTSTRAP_USERNAME:}
+    password: ${ADMIN_BOOTSTRAP_PASSWORD:}
 
 logging:
   level:
@@ -26,5 +37,5 @@ logging:
     org.springframework.web.server.adapter.HttpWebHandlerAdapter: DEBUG
 
 storage:
-  path: ./uploads
-  quota: 10737418240 # 10 GB
+  path: ${STORAGE_PATH:./uploads}
+  quota: ${STORAGE_QUOTA:10737418240} # 10 GB

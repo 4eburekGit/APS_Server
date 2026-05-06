@@ -56,14 +56,16 @@ public class FolderController {
     public Mono<FolderEntity> getOrCreateRootFolder() {
         return getCurrentUserId().flatMap(userId ->
                 folderRepository.findByOwnerIdAndParentFolderIdIsNullAndName(userId, "root_"+userId.toString())
-                        .switchIfEmpty(createRootFolder(userId))
+                        // Mono.defer so we don't call Files.createDirectories on every
+                        // lookup — only when the row is actually missing.
+                        .switchIfEmpty(Mono.defer(() -> createRootFolder(userId)))
         );
     }
-    
+
     public Mono<FolderEntity> getOrCreateBinFolder() {
         return getCurrentUserId().flatMap(userId ->
                 folderRepository.findByOwnerIdAndParentFolderIdIsNullAndName(userId, "bin_"+userId.toString())
-                        .switchIfEmpty(createBinFolder(userId))
+                        .switchIfEmpty(Mono.defer(() -> createBinFolder(userId)))
         );
     }
 
@@ -76,7 +78,7 @@ public class FolderController {
         try {
 			Files.createDirectories(Paths.get(storagePath).resolve(userId.toString()).resolve("root_"+userId.toString()));
 		} catch (IOException e) {
-			e.printStackTrace();
+			log.warn("Failed to create root dir for {}: {}", userId, e.toString());
 			return Mono.error(new ResponseStatusException(HttpStatus.FORBIDDEN, "Root folder already exists"));
 		}
         return folderRepository.save(root);
@@ -91,7 +93,7 @@ public class FolderController {
         try {
 			Files.createDirectories(Paths.get(storagePath).resolve(userId.toString()).resolve("bin_"+userId.toString()));
 		} catch (IOException e) {
-			e.printStackTrace();
+			log.warn("Failed to create bin dir for {}: {}", userId, e.toString());
 			return Mono.error(new ResponseStatusException(HttpStatus.FORBIDDEN, "Bin folder already exists"));
 		}
         return folderRepository.save(bin);
@@ -192,7 +194,7 @@ public class FolderController {
 											Files.deleteIfExists(path);
 											log.info("Deleting path: " + path);
 										} catch (IOException e) {
-											e.printStackTrace();
+											log.warn("Failed to delete folder path {}: {}", path, e.toString());
 											throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Folder " + subfolder.getName()+
 													" on path "+ path + " was not found during deletion");
 										}
@@ -225,25 +227,29 @@ public class FolderController {
     }
 
     public Mono<FolderEntity> createFolder(String name, UUID parentFolderId) {
+        // Reject names that would allow path traversal (../, slashes, NUL, etc.)
+        // before they ever reach Path.resolve. Storage layer treats names as
+        // trusted segments.
+        final String safeName = PathSanitizer.sanitizeFolderName(name);
         return getCurrentUserId().flatMap(userId -> {
         	if (parentFolderId == null) {
         		return getOrCreateRootFolder()
         				.switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND,"Parent folder not found or access denied")))
                         .flatMap(parent ->
-                                folderRepository.existsByOwnerIdAndParentFolderIdIsNullAndName(userId, name)
+                                folderRepository.existsByOwnerIdAndParentFolderIdIsNullAndName(userId, safeName)
                                         .flatMap(exists -> {
                                             if (exists) {
                                                 return Mono.error(new RuntimeException("Folder already exists"));
                                             }
                                             FolderEntity newFolder = new FolderEntity();
-                                            newFolder.setName(name);
+                                            newFolder.setName(safeName);
                                             newFolder.setOwnerId(userId);
                                             newFolder.setParentFolderId(parent.getId());
                                             newFolder.setCreatedAt(Instant.now());
                                     		try {
-												Files.createDirectories(Paths.get(storagePath, userId.toString()).resolve("root_"+userId.toString()).resolve(name));
+												Files.createDirectories(Paths.get(storagePath, userId.toString()).resolve("root_"+userId.toString()).resolve(safeName));
 											} catch (IOException e) {
-												e.printStackTrace();
+												log.warn("Failed to create folder dir for {}: {}", userId, e.toString());
 												return Mono.error(new ResponseStatusException(HttpStatus.FORBIDDEN, "Folder already exists"));
 											}
                                             return folderRepository.save(newFolder);
@@ -254,13 +260,13 @@ public class FolderController {
         		return folderRepository.findByIdAndOwnerId(parentFolderId, userId)
                         .switchIfEmpty(Mono.error(new RuntimeException("Parent folder not found or access denied")))
                         .flatMap(parent ->
-                                folderRepository.existsByOwnerIdAndParentFolderIdAndName(userId, parentFolderId, name)
+                                folderRepository.existsByOwnerIdAndParentFolderIdAndName(userId, parentFolderId, safeName)
                                         .flatMap(exists -> {
                                             if (exists) {
                                                 return Mono.error(new ResponseStatusException(HttpStatus.FORBIDDEN,"Folder already exists"));
                                             }
                                             FolderEntity newFolder = new FolderEntity();
-                                            newFolder.setName(name);
+                                            newFolder.setName(safeName);
                                             newFolder.setOwnerId(userId);
                                             newFolder.setParentFolderId(parentFolderId);
                                             newFolder.setCreatedAt(Instant.now());
@@ -270,9 +276,9 @@ public class FolderController {
 	                                    		})
 	                                    		.flatMap(path -> {
 	                                    			try {
-														Files.createDirectories(path.resolve(name));
+														Files.createDirectories(path.resolve(safeName));
 													} catch (IOException e) {
-														e.printStackTrace();
+														log.warn("Failed to create folder dir for {}: {}", userId, e.toString());
 														throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Folder already exists");
 													}
 	                                    			return Mono.just(newFolder);
@@ -377,15 +383,14 @@ public class FolderController {
        that already exists at the same parent level.
        ========================================================= */
     public Mono<FolderEntity> renameFolder(UUID folderId, String newName) {
-        if (newName == null) {
-            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Name is required"));
-        }
-        String trimmed = newName.trim();
-        if (trimmed.isEmpty()) {
-            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Name cannot be empty"));
-        }
-        if (trimmed.contains("/") || trimmed.contains("\\")) {
-            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Name cannot contain slashes"));
+        // Centralised validation: rejects null/blank/slashes/NUL/"."/".." etc.
+        // Wrap in defer so the BAD_REQUEST surfaces through the Mono pipeline
+        // rather than being thrown synchronously.
+        final String trimmed;
+        try {
+            trimmed = PathSanitizer.sanitizeFolderName(newName);
+        } catch (ResponseStatusException e) {
+            return Mono.error(e);
         }
         return getCurrentUserId().flatMap(userId ->
                 folderRepository.findByIdAndOwnerId(folderId, userId)
@@ -575,13 +580,14 @@ public class FolderController {
     }
 
     private Mono<String> uniqueFolderName(UUID userId, UUID parentId, String baseName) {
+        // Reactor disallows null in .map(); use flatMap + Mono.empty() to filter
+        // the colliding candidates out instead.
         return Flux.range(0, 10000)
                 .concatMap(i -> {
                     String candidate = (i == 0) ? baseName : baseName + " (копия" + (i == 1 ? "" : " " + i) + ")";
                     return folderRepository.existsByOwnerIdAndParentFolderIdAndName(userId, parentId, candidate)
-                            .map(exists -> exists ? null : candidate);
+                            .flatMap(exists -> exists ? Mono.<String>empty() : Mono.just(candidate));
                 })
-                .filter(name -> name != null)
                 .next();
     }
 
