@@ -6,6 +6,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
+import server.repository.AdminRepo;
 import server.repository.UserRepo;
 
 @Service
@@ -14,6 +15,7 @@ import server.repository.UserRepo;
 public class AuthService {
 
     private final UserRepo userRepository;
+    private final AdminRepo adminRepository;
     private final PasswordEncoder passwordEncoder;
     private final JWTHandler jwtHandler;
     private final ReactiveAuthenticationManager authenticationManager;
@@ -27,6 +29,8 @@ public class AuthService {
         return userRepository.save(user)
                 .flatMap(saved -> folderCtl.createRootFolder(saved.getId()).log("New user ID: "+saved.getId().toString())
                         .thenReturn(saved))
+                .flatMap(saved -> folderCtl.createBinFolder(saved.getId())
+                        .thenReturn(saved))
                 .map(saved -> jwtHandler.generateToken(saved));
     }
 
@@ -35,6 +39,25 @@ public class AuthService {
                         new UsernamePasswordAuthenticationToken(username, password)
                 )
                 .map(auth -> (UserEntity) auth.getPrincipal())
+                .map(jwtHandler::generateToken);
+    }
+    
+    // ADMIN
+    
+    public Mono<String> registerAdmin(String username, String password) {
+        AdminEntity user = new AdminEntity();
+        user.setUsername(username);
+        user.setPassword(passwordEncoder.encode(password));
+        user.setRole("ADMIN"); // admin role
+        return adminRepository.save(user)
+                .map(saved -> jwtHandler.generateToken(saved));
+    }
+
+    public Mono<String> loginAdmin(String username, String password) {
+        return authenticationManager.authenticate(
+                        new UsernamePasswordAuthenticationToken(username, password)
+                )
+                .map(auth -> (AdminEntity) auth.getPrincipal())
                 .map(jwtHandler::generateToken);
     }
 }

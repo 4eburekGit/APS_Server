@@ -15,4 +15,5 @@ public class FolderEntity {
     private UUID parentFolderId;   // null if in user's root folder
     private UUID ownerId;
     private Instant createdAt;
+    private Instant deletedAt;
 }

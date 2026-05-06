@@ -19,4 +19,6 @@ public class FileMetaEntity {
     private Instant uploadedAt;
     private UUID ownerId;   // owner UID
     private UUID folderId; // null if it's user's root folder
+    private Instant deletedAt;
+    private Instant updatedAt;
 }

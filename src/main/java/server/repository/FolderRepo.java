@@ -12,5 +12,7 @@ public interface FolderRepo extends ReactiveCrudRepository<FolderEntity, UUID> {
     Flux<FolderEntity> findByOwnerIdAndParentFolderIdIsNull(UUID ownerId); // root folder
     Mono<FolderEntity> findByIdAndOwnerId(UUID id, UUID ownerId);
     Mono<FolderEntity> findByOwnerIdAndParentFolderIdIsNullAndName(UUID ownerId, String name); // root by name
+    
     Mono<Boolean> existsByOwnerIdAndParentFolderIdAndName(UUID ownerId, UUID parentFolderId, String name);
+    Mono<Boolean> existsByOwnerIdAndParentFolderIdIsNullAndName(UUID ownerId, String name);
 }

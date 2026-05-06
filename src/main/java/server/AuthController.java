@@ -36,7 +36,19 @@ public class AuthController {
     @GetMapping("/me")
     public Mono<String> currentUser() {
         return ReactiveSecurityContextHolder.getContext()
-                .map(ctx -> ctx.getAuthentication().getName());
+                .map(ctx -> (ctx.getAuthentication().getName() + "Role: " + ctx.getAuthentication().getAuthorities()));
+    }
+    
+    @PostMapping("/register/admin")
+    public Mono<Map<String, String>> registerAdmin(@RequestBody AuthRequest request) {
+    	return authService.registerAdmin(request.username(), request.password())
+                .map(token -> Map.of("token", token));
+    }
+
+    @PostMapping("/login/admin")
+    public Mono<Map<String, String>> loginAdmin(@RequestBody AuthRequest request) {
+        return authService.loginAdmin(request.username(), request.password())
+                .map(token -> Map.of("token", token));
     }
 
     record AuthRequest(String username, String password) {}

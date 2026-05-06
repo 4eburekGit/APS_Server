@@ -8,6 +8,7 @@ import java.util.List;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.ReactiveAuthenticationManager;
 import org.springframework.security.authentication.UserDetailsRepositoryReactiveAuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -34,13 +35,56 @@ import org.springframework.web.server.WebFilterChain;
 @EnableTransactionManagement
 @RequiredArgsConstructor
 public class SecurityController {
+	@RequiredArgsConstructor
+	private class JWTAuthFilter implements WebFilter {
+
+		private static final String AUTH_PROCESSED_ATTR = "JWT_AUTH_PROCESSED";
+	    private final JWTHandler jwtService;
+	    private final ReactiveUserDetailsService userDetailsService;
+
+	    @Override
+	    public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+	        if (Boolean.TRUE.equals(exchange.getAttribute(AUTH_PROCESSED_ATTR))) {
+	            return chain.filter(exchange);
+	        }
+	        exchange.getAttributes().put(AUTH_PROCESSED_ATTR, true);
+
+	        String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+	        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+	            return chain.filter(exchange);
+	        }
+
+	        String token = authHeader.substring(7);
+	        String username;
+	        try {
+	            username = jwtService.extractUsername(token);
+	        } catch (Exception e) {
+	            log.warn("Invalid JWT token: {}", e.getMessage());
+	            return chain.filter(exchange);
+	        }
+
+	        return userDetailsService.findByUsername(username)
+	                .filter(userDetails -> jwtService.validateToken(token, userDetails))
+	                .flatMap(userDetails -> {
+	                    Authentication auth = UsernamePasswordAuthenticationToken.authenticated(
+	                            userDetails, null, userDetails.getAuthorities()
+	                    );
+	                    return chain.filter(exchange)
+	                            .contextWrite(ReactiveSecurityContextHolder.withAuthentication(auth)).log("CONTEXT WRITTEN");
+	                })
+	                // .switchIfEmpty(Mono.defer(() -> {
+	                //    log.debug("No valid user for token, continuing without authentication");
+	                //    return chain.filter(exchange);
+	                // }))
+	                ;
+	    }
+	}
 
     private final ReactiveUserDetailsService userDetailsService;
     private final JWTHandler jwtHandler;
 
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
-        JWTAuthFilter jwtFilter = new JWTAuthFilter(jwtHandler, userDetailsService);
         return http
         		.csrf(csrf -> csrf.disable())
         		.cors(cors -> cors.disable())
@@ -51,25 +95,10 @@ public class SecurityController {
                        .pathMatchers("/auth/**").permitAll()
                        .anyExchange().authenticated()
                 )
-                .addFilterAt(jwtFilter, SecurityWebFiltersOrder.AUTHENTICATION)
+                .addFilterAt(new JWTAuthFilter(jwtHandler, userDetailsService), SecurityWebFiltersOrder.AUTHENTICATION)
                 .build();
     }
-/*
-    @Bean
-    public AuthenticationWebFilter jwtAuthenticationFilter() {
-        AuthenticationWebFilter filter = new AuthenticationWebFilter(authenticationManager()) {
-            @Override
-            public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
-                log.debug("JWT Filter processing request: {}", exchange.getRequest().getPath());
-                return super.filter(exchange, chain)
-                        .doOnSuccess(aVoid -> log.debug("JWT Filter success"))
-                        .doOnError(e -> log.error("JWT Filter error", e));
-            }
-        };
-        filter.setServerAuthenticationConverter(new JWTService(jwtHandler, userDetailsService));
-        filter.setSecurityContextRepository(NoOpServerSecurityContextRepository.getInstance());
-        return filter;
-    }*/
+
     @Bean
     public ReactiveAuthenticationManager authenticationManager() {
     	log.debug("Entering AUTH manager");

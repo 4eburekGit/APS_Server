@@ -1,25 +1,30 @@
 spring:
   r2dbc:
-    # url: r2dbc:postgresql://localhost:5432/filedb
+    driver: postgresql
+    host: localhost
+    port: 5432
+    database: filedb
     username: postgres
     password: 1417
   transaction:
     rollback-on-commit-failure: true
 
 jwt:
-  secret: ${JWT_SECRET:SomethingExceptionallyEnormouslyLongThatHopefullyDoesNotAppearInAnyDictionary}}
+  secret: SomethingExceptionallyEnormouslyLongThatHopefullyDoesNotAppearInAnyDictionary
   expiration: 86400000  # 24 hours
-  
+
 logging:
   level:
     server: DEBUG
-    server.security: DEBUG
+    # server.security: DEBUG
     reactor.netty: DEBUG
     org.springframework.security: TRACE
     org.springframework.web: TRACE
-    io.r2dbc.postgresql: DEBUG
-    io.jsonwebtoken: DEBUG
+    # io.r2dbc.postgresql: DEBUG
+    # io.jsonwebtoken: DEBUG
     # org.springframework.boot.autoconfigure: DEBUG
+    org.springframework.web.server.adapter.HttpWebHandlerAdapter: DEBUG
 
 storage:
   path: ./uploads
+  quota: 10737418240 # 10 GB
