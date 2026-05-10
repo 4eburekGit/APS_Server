@@ -1,0 +1,61 @@
+# Caddy config for APS Cloud frontend.
+# Serves the Vite SPA build and reverse-proxies API calls to the backend.
+#
+# `handle` blocks are mutually exclusive: a request matches at most one.
+# This avoids try_files rewriting /auth/* to /index.html before reverse_proxy
+# can run (which would surface as 405 Allow: GET, HEAD from file_server).
+
+{
+	admin off
+	# auto_https stays ON: Caddy auto-issues + auto-renews a Let's Encrypt
+	# cert for aps.gt34m.tech and redirects HTTP→HTTPS. Persists in
+	# /data/caddy (mounted as `aps_caddy_data` volume in compose).
+	email gt34m@gt34m.tech
+}
+
+# Plain :80 listener — answers the container's healthcheck (which has no
+# DNS for aps.gt34m.tech and would fail on Caddy's auto-issued cert if it
+# tried HTTPS). Everything else on :80 redirects to https://aps.gt34m.tech.
+:80 {
+	@health path /healthz
+	handle @health {
+		respond "ok" 200
+	}
+	handle {
+		redir https://aps.gt34m.tech{uri} permanent
+	}
+}
+
+aps.gt34m.tech {
+	root  * /usr/share/caddy
+	encode zstd gzip
+
+	# Allow large file uploads (matches the 10 GiB per-user quota on the backend).
+	request_body {
+		max_size 10GB
+	}
+
+	# ---- API: forward everything under /auth, /api, /admin to backend ----
+	@api path /auth /auth/* /api /api/* /admin /admin/*
+	handle @api {
+		reverse_proxy backend:8080 {
+			flush_interval -1
+			transport http {
+				read_timeout  1h
+				write_timeout 1h
+				dial_timeout  10s
+			}
+		}
+	}
+
+	# ---- SPA fallback: serve real files, otherwise index.html ----
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
