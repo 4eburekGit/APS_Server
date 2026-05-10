@@ -1,0 +1,1646 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>APS_Server - Swagger UI</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #fafafa;
+    color: #3b4151;
+    line-height: 1.5;
+  }
+  /* Top bar */
+  .topbar {
+    background: #1b1b1b;
+    padding: 8px 0;
+    border-bottom: 4px solid #3b3b3b;
+  }
+  .topbar-wrap {
+    max-width: 1460px;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+  }
+  .topbar-logo {
+    color: #fff;
+    font-size: 1.5em;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .topbar-logo span { color: #89bf04; }
+
+  /* Container */
+  .swagger-ui {
+    max-width: 1460px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  /* Info block */
+  .info {
+    margin: 50px 0;
+  }
+  .info h1.title {
+    font-size: 36px;
+    font-weight: 600;
+    color: #3b4151;
+    margin-bottom: 10px;
+  }
+  .info h1.title .version {
+    background: #7d8492;
+    color: #fff;
+    font-size: 14px;
+    padding: 5px 8px;
+    border-radius: 57px;
+    margin-left: 8px;
+    font-weight: 600;
+    vertical-align: middle;
+  }
+  .info .base-url {
+    background: #fff;
+    border: 1px solid #ebebeb;
+    padding: 6px 10px;
+    font-family: monospace;
+    font-size: 13px;
+    border-radius: 4px;
+    display: inline-block;
+    margin: 8px 0;
+    color: #3b4151;
+  }
+  .info .description {
+    font-size: 14px;
+    color: #3b4151;
+    margin-top: 15px;
+    max-width: 900px;
+  }
+  .info .description p { margin: 8px 0; }
+  .info .description ul { padding-left: 22px; margin: 8px 0; }
+  .info .description code {
+    background: rgba(0,0,0,.05);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 12px;
+  }
+
+  /* Auth section */
+  .scheme-container {
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,.1);
+    margin: 0 0 20px;
+    padding: 15px 20px;
+    border-radius: 4px;
+  }
+  .scheme-container h4 {
+    font-size: 12px;
+    color: #3b4151;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .auth-btn {
+    background: #fff;
+    color: #49cc90;
+    border: 2px solid #49cc90;
+    border-radius: 4px;
+    padding: 5px 23px 4px 23px;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .auth-btn::before {
+    content: "🔒";
+    font-size: 12px;
+  }
+
+  /* Tag (group) */
+  .opblock-tag {
+    border-bottom: 1px solid rgba(59,65,81,.3);
+    color: #3b4151;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    padding: 10px 20px 10px 10px;
+    transition: all .2s;
+    margin: 0 0 5px;
+    font-size: 22px;
+    font-weight: 700;
+  }
+  .opblock-tag .tag-desc {
+    font-size: 13px;
+    font-weight: 400;
+    color: #3b4151;
+    margin-left: 10px;
+    padding-left: 10px;
+    border-left: 1px solid rgba(0,0,0,.2);
+  }
+  .opblock-tag-section { margin-bottom: 15px; }
+
+  /* Operation block */
+  .opblock {
+    border: 1px solid #000;
+    border-radius: 4px;
+    box-shadow: 0 0 3px rgba(0,0,0,.19);
+    margin: 0 0 15px;
+    background: #fff;
+  }
+  .opblock-summary {
+    display: flex;
+    align-items: center;
+    padding: 5px;
+    cursor: pointer;
+  }
+  .opblock-summary-method {
+    color: #fff;
+    font-family: 'Titillium Web', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    min-width: 80px;
+    padding: 6px 0;
+    text-align: center;
+    text-shadow: 0 1px 0 rgba(0,0,0,.1);
+    border-radius: 3px;
+    margin-right: 10px;
+  }
+  .opblock-summary-path {
+    color: #3b4151;
+    flex: 0 1 auto;
+    font-family: monospace;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 0 10px;
+    word-break: break-all;
+  }
+  .opblock-summary-description {
+    color: #3b4151;
+    flex: 1;
+    font-size: 13px;
+    padding: 0 10px;
+    text-align: right;
+    font-family: -apple-system, sans-serif;
+    font-weight: 400;
+  }
+  .opblock-summary-stub {
+    background: #ffd866;
+    color: #3b4151;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 3px;
+    margin-left: 8px;
+  }
+  .opblock-auth {
+    margin-left: 8px;
+    color: #6c757d;
+  }
+
+  /* Method colors (FastAPI/Swagger) */
+  .opblock-get          { background: rgba(97,175,254,.1); border-color: #61affe; }
+  .opblock-get  .opblock-summary { border-color: #61affe; }
+  .opblock-get  .opblock-summary-method { background: #61affe; }
+  .opblock-post         { background: rgba(73,204,144,.1); border-color: #49cc90; }
+  .opblock-post .opblock-summary { border-color: #49cc90; }
+  .opblock-post .opblock-summary-method { background: #49cc90; }
+  .opblock-put          { background: rgba(252,161,48,.1); border-color: #fca130; }
+  .opblock-put  .opblock-summary { border-color: #fca130; }
+  .opblock-put  .opblock-summary-method { background: #fca130; }
+  .opblock-delete       { background: rgba(249,62,62,.1); border-color: #f93e3e; }
+  .opblock-delete .opblock-summary { border-color: #f93e3e; }
+  .opblock-delete .opblock-summary-method { background: #f93e3e; }
+  .opblock-patch        { background: rgba(80,227,194,.1); border-color: #50e3c2; }
+  .opblock-patch .opblock-summary { border-color: #50e3c2; }
+  .opblock-patch .opblock-summary-method { background: #50e3c2; }
+
+  /* Body — expanded content */
+  .opblock-body {
+    padding: 15px 20px;
+    border-top: 1px solid rgba(0,0,0,.05);
+    background: #fff;
+    display: none;
+  }
+  .opblock.is-open .opblock-body { display: block; }
+  .opblock-section-header {
+    color: #3b4151;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 8px 0 8px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid rgba(59,65,81,.2);
+    margin: 15px 0 10px;
+  }
+  .opblock-description {
+    color: #3b4151;
+    font-size: 14px;
+    padding: 8px 0 12px;
+    line-height: 1.6;
+  }
+
+  /* Tables */
+  .parameters-col_description, table.parameters {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 13px;
+  }
+  table.parameters th {
+    background: transparent;
+    border-bottom: 1px solid rgba(59,65,81,.2);
+    color: #3b4151;
+    font-weight: 700;
+    padding: 8px;
+    text-align: left;
+    font-size: 12px;
+    text-transform: uppercase;
+  }
+  table.parameters td {
+    border-bottom: 1px solid rgba(59,65,81,.1);
+    padding: 10px 8px;
+    vertical-align: top;
+  }
+  .param-name {
+    font-family: monospace;
+    font-weight: 700;
+    font-size: 14px;
+    color: #3b4151;
+  }
+  .param-type {
+    font-size: 12px;
+    color: #999;
+    font-family: monospace;
+    margin-top: 3px;
+  }
+  .param-required {
+    color: #f93e3e;
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: 4px;
+  }
+  .param-in {
+    background: #ebebeb;
+    color: #3b4151;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+    text-transform: lowercase;
+  }
+  .param-desc { color: #3b4151; font-size: 13px; }
+
+  /* Code blocks */
+  pre.code-block {
+    background: #41444e;
+    color: #fff;
+    padding: 12px 14px;
+    border-radius: 4px;
+    font-family: 'Source Code Pro', monospace;
+    font-size: 12px;
+    overflow-x: auto;
+    margin: 8px 0;
+    line-height: 1.5;
+  }
+  pre.code-block .key { color: #88c0d0; }
+  pre.code-block .str { color: #a3be8c; }
+  pre.code-block .com { color: #6c757d; font-style: italic; }
+
+  /* Responses */
+  .responses-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 13px;
+  }
+  .responses-table th {
+    background: transparent;
+    border-bottom: 1px solid rgba(59,65,81,.2);
+    color: #3b4151;
+    font-weight: 700;
+    padding: 8px;
+    text-align: left;
+    font-size: 12px;
+    text-transform: uppercase;
+  }
+  .responses-table td {
+    border-bottom: 1px solid rgba(59,65,81,.1);
+    padding: 10px 8px;
+    vertical-align: top;
+  }
+  .status-code {
+    font-family: monospace;
+    font-weight: 700;
+    font-size: 14px;
+    color: #3b4151;
+  }
+  .status-200 { color: #49cc90; }
+  .status-400 { color: #fca130; }
+  .status-401 { color: #fca130; }
+  .status-403 { color: #fca130; }
+  .status-404 { color: #f93e3e; }
+  .status-500 { color: #f93e3e; }
+
+  /* Models / Schemas */
+  .models {
+    border: 1px solid rgba(59,65,81,.3);
+    border-radius: 4px;
+    background: rgba(0,0,0,.05);
+    margin: 30px 0;
+  }
+  .models h4 {
+    font-size: 16px;
+    color: #606060;
+    padding: 10px 20px;
+    border-bottom: 1px solid rgba(59,65,81,.3);
+    font-weight: 700;
+    background: rgba(0,0,0,.02);
+  }
+  .model-box {
+    background: #fff;
+    margin: 10px 20px;
+    padding: 15px;
+    border: 1px solid #ebebeb;
+    border-radius: 4px;
+  }
+  .model-name {
+    font-family: monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: #3b4151;
+    margin-bottom: 8px;
+  }
+  .model-type {
+    color: #999;
+    font-size: 12px;
+    margin-left: 6px;
+    font-weight: 400;
+  }
+
+  /* Caret */
+  .arrow {
+    margin-left: auto;
+    transition: transform .2s;
+    color: #3b4151;
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .opblock.is-open .arrow { transform: rotate(90deg); }
+
+  .badge-stub {
+    background: #ff6f61;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 8px;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-wrap">
+    <span class="topbar-logo">APS<span>_Server</span> · Swagger UI</span>
+  </div>
+</div>
+
+<div class="swagger-ui">
+
+  <!-- Info -->
+  <div class="info">
+    <h1 class="title">APS_Server <span class="version">v0.0.1</span></h1>
+    <div class="base-url">
+      <strong>Base URL:</strong> http://localhost:8080/
+    </div>
+    <div class="description">
+      <p>Реактивный файловый сервер (облачное хранилище) на <strong>Spring Boot 4.0.5 (WebFlux)</strong> и <strong>Java 21</strong>.
+      Предоставляет функциональность, аналогичную Google Drive / Dropbox: загрузку, скачивание, организацию файлов по папкам, корзину (soft-delete) и управление аккаунтами.</p>
+      <p><strong>Стек технологий:</strong></p>
+      <ul>
+        <li>Spring WebFlux — реактивный, неблокирующий стек</li>
+        <li>Spring Security + JWT (jjwt 0.13.0, HMAC-SHA), stateless</li>
+        <li>Spring Data R2DBC + PostgreSQL (схема <code>filedb</code>)</li>
+        <li>Хранение файлов: файловая система (<code>storage.path = ./uploads</code>)</li>
+        <li>Квота на пользователя: 10 ГБ (<code>storage.quota</code>)</li>
+      </ul>
+      <p><strong>Концепция корзины:</strong> удаление файлов и папок — soft-delete (перемещение в <code>bin_&lt;userId&gt;</code>). Жёсткое удаление — purge (физическое уничтожение).</p>
+    </div>
+  </div>
+
+  <!-- Auth -->
+  <div class="scheme-container">
+    <h4>Authorize</h4>
+    <button class="auth-btn">Authorize</button>
+    <p style="margin-top: 10px; font-size: 13px; color: #3b4151;">
+      <strong>Схема:</strong> Bearer JWT Token &nbsp;|&nbsp;
+      <strong>Header:</strong> <code style="background:#eee;padding:2px 6px;border-radius:3px;font-family:monospace;">Authorization: Bearer &lt;token&gt;</code> &nbsp;|&nbsp;
+      <strong>TTL:</strong> 24h
+    </p>
+    <p style="margin-top: 6px; font-size: 12px; color: #6c757d;">Публичные маршруты: <code>/auth/**</code> (permitAll). <code>/admin/**</code> требует <code>ROLE_ADMIN</code>. Все остальные — валидный JWT. Payload JWT содержит <code>sub</code> (username) и <code>role</code> (<code>ROLE_USER</code> / <code>ROLE_ADMIN</code>). Ответы <code>401/403</code> отдаются без <code>WWW-Authenticate: Basic</code>, чтобы SPA могла обработать ошибку без браузерного диалога.</p>
+  </div>
+
+  <!-- ============ TAG: AUTH ============ -->
+  <div class="opblock-tag-section">
+    <h3 class="opblock-tag">
+      auth
+      <span class="tag-desc">Регистрация, аутентификация пользователей и администраторов</span>
+    </h3>
+
+    <!-- POST /auth/register -->
+    <div class="opblock opblock-post is-open">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">POST</span>
+        <span class="opblock-summary-path">/auth/register</span>
+        <span class="opblock-summary-description">Регистрация нового пользователя</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Регистрация нового пользователя. Сохраняет запись в таблицу <code>users</code> с ролью <code>USER</code>,
+          автоматически создаёт корневую папку (<code>root_&lt;userId&gt;</code>) и папку корзины (<code>bin_&lt;userId&gt;</code>) на диске и в БД.
+          Возвращает JWT токен.
+        </div>
+        <h4 class="opblock-section-header">Request body</h4>
+        <p style="font-size:12px;color:#666;">application/json — <code>AuthRequest</code></p>
+        <pre class="code-block">{
+  <span class="key">"username"</span>: <span class="str">"string"</span>,
+  <span class="key">"password"</span>: <span class="str">"string"</span>
+}</pre>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Successful Response. Body: <code>{ "token": "&lt;JWT&gt;" }</code></td></tr>
+            <tr><td><span class="status-code status-500">500</span></td><td>Internal Server Error (например, username занят)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- POST /auth/login -->
+    <div class="opblock opblock-post">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">POST</span>
+        <span class="opblock-summary-path">/auth/login</span>
+        <span class="opblock-summary-description">Аутентификация пользователя</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Унифицированная аутентификация. Проверяет логин/пароль через
+          <code>ReactiveAuthenticationManager</code> (BCrypt) и принимает credentials
+          как обычных пользователей, так и администраторов
+          (<code>UserDataService</code> ищет принципала и в <code>users</code>, и в
+          <code>admins</code>). В выданном JWT присутствует строка
+          <code>role</code> (<code>ROLE_USER</code> / <code>ROLE_ADMIN</code>) — клиент
+          использует её для маршрутизации после входа.
+        </div>
+        <h4 class="opblock-section-header">Request body</h4>
+        <p style="font-size:12px;color:#666;">application/json — <code>AuthRequest</code></p>
+        <pre class="code-block">{
+  <span class="key">"username"</span>: <span class="str">"string"</span>,
+  <span class="key">"password"</span>: <span class="str">"string"</span>
+}</pre>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Successful Response. Body: <code>{ "token": "&lt;JWT&gt;" }</code></td></tr>
+            <tr><td><span class="status-code status-401">401</span></td><td>Неверные credentials</td></tr>
+            <tr><td><span class="status-code status-500">500</span></td><td>Internal Server Error</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- GET /auth/me -->
+    <div class="opblock opblock-get">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">GET</span>
+        <span class="opblock-summary-path">/auth/me</span>
+        <span class="opblock-summary-description">Информация о текущем пользователе</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Возвращает имя и роль текущего аутентифицированного пользователя из <code>SecurityContext</code>. Диагностический эндпоинт.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <p style="font-size:13px;color:#666;">No parameters</p>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Successful Response. Body: <code>"&lt;username&gt;Role: [ROLE_USER]"</code></td></tr>
+            <tr><td><span class="status-code status-500">500</span></td><td>Если SecurityContext пуст (нет токена)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- POST /auth/register/admin -->
+    <div class="opblock opblock-post">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">POST</span>
+        <span class="opblock-summary-path">/auth/register/admin</span>
+        <span class="opblock-summary-description">Регистрация нового администратора 🔒 ADMIN</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Создание нового администратора. <strong>Требует JWT с ролью <code>ADMIN</code></strong> —
+          security-фильтр отклонит запрос без неё (<code>403</code>). Сохраняет запись в таблицу
+          <code>admins</code> с ролью <code>ADMIN</code>; корневые папки не создаются; возвращает
+          JWT токен для нового админа.
+          <p>
+            <strong>Первый администратор</strong> не может быть создан этим эндпоинтом
+            (chicken-and-egg). Вместо этого выставьте переменные окружения
+            <code>ADMIN_BOOTSTRAP_USERNAME</code> и <code>ADMIN_BOOTSTRAP_PASSWORD</code>
+            (например, в <code>.env</code>) — <code>AdminBootstrap</code> при старте приложения
+            идемпотентно создаст эту учётную запись, если её ещё нет. После этого ротировать
+            пароли уже через данный эндпоинт.
+          </p>
+        </div>
+        <h4 class="opblock-section-header">Request body</h4>
+        <p style="font-size:12px;color:#666;">application/json — <code>AuthRequest</code></p>
+        <pre class="code-block">{
+  <span class="key">"username"</span>: <span class="str">"string"</span>,
+  <span class="key">"password"</span>: <span class="str">"string"</span>
+}</pre>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Successful Response. Body: <code>{ "token": "&lt;JWT&gt;" }</code></td></tr>
+            <tr><td><span class="status-code status-401">401</span></td><td>Без JWT или JWT просрочен</td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>JWT валиден, но роль не <code>ADMIN</code></td></tr>
+            <tr><td><span class="status-code status-500">500</span></td><td>Internal Server Error</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- POST /auth/login/admin -->
+    <div class="opblock opblock-post">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">POST</span>
+        <span class="opblock-summary-path">/auth/login/admin</span>
+        <span class="opblock-summary-description">Аутентификация администратора</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          <em>Устаревший алиас.</em> Делегирует на <code>POST /auth/login</code>, который
+          теперь принимает credentials любого типа (пользователь или администратор)
+          и кладёт <code>role</code> в JWT. Эндпоинт сохранён ради обратной
+          совместимости.
+        </div>
+        <h4 class="opblock-section-header">Request body</h4>
+        <p style="font-size:12px;color:#666;">application/json — <code>AuthRequest</code></p>
+        <pre class="code-block">{
+  <span class="key">"username"</span>: <span class="str">"string"</span>,
+  <span class="key">"password"</span>: <span class="str">"string"</span>
+}</pre>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Successful Response. Body: <code>{ "token": "&lt;JWT&gt;" }</code></td></tr>
+            <tr><td><span class="status-code status-401">401</span></td><td>Неверные credentials</td></tr>
+            <tr><td><span class="status-code status-500">500</span></td><td>Internal Server Error</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAG: FILES ============ -->
+  <div class="opblock-tag-section">
+    <h3 class="opblock-tag">
+      files
+      <span class="tag-desc">Загрузка, скачивание и управление файлами 🔒 JWT</span>
+    </h3>
+
+    <!-- POST /api/files/upload -->
+    <div class="opblock opblock-post">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">POST</span>
+        <span class="opblock-summary-path">/api/files/upload</span>
+        <span class="opblock-summary-description">Загрузка файла в корневую папку 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Загрузка файла в корневую папку текущего пользователя. Файл сохраняется по пути <code>./uploads/&lt;userId&gt;/root_&lt;userId&gt;/&lt;filename&gt;</code>.
+          Метаданные пишутся в таблицу <code>metadata</code>. Проверяется квота 10 ГБ. При коллизии имени файл перезаписывается.
+          Имя файла из <code>multipart</code> проходит через <code>PathSanitizer</code> — отвергаются
+          пустое/<code>.</code>/<code>..</code>, слэши (<code>/</code>, <code>\</code>), NUL,
+          control-символы и имена длиннее 255 символов.
+        </div>
+        <h4 class="opblock-section-header">Request body</h4>
+        <p style="font-size:12px;color:#666;">multipart/form-data</p>
+        <table class="parameters">
+          <thead><tr><th style="width:30%;">Name</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="param-name">file</span><span class="param-required">*</span><div class="param-type">FilePart (binary)</div></td>
+              <td class="param-desc">Загружаемый файл</td>
+            </tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Возвращает <code>FileMetaEntity</code></td></tr>
+            <tr><td><span class="status-code status-400">400</span></td><td>Имя файла невалидно (path-traversal / запрещённые символы)</td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Превышена квота хранилища</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Корневая папка не найдена</td></tr>
+            <tr><td><span class="status-code status-401">401</span></td><td>Unauthorized</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- POST /api/files/upload/to/{folderId} -->
+    <div class="opblock opblock-post">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">POST</span>
+        <span class="opblock-summary-path">/api/files/upload/to/{folderId}</span>
+        <span class="opblock-summary-description">Загрузка файла в указанную папку 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Загрузка файла в указанную папку. Папка должна принадлежать текущему пользователю.
+          Проверяется квота. Имя файла валидируется тем же <code>PathSanitizer</code>, что и в
+          <code>POST /api/files/upload</code>.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <thead><tr><th style="width:30%;">Name</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="param-name">folderId</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td>
+              <td class="param-desc">ID целевой папки</td>
+            </tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Request body</h4>
+        <p style="font-size:12px;color:#666;">multipart/form-data</p>
+        <table class="parameters">
+          <tbody>
+            <tr>
+              <td style="width:30%;"><span class="param-name">file</span><span class="param-required">*</span><div class="param-type">FilePart (binary)</div></td>
+              <td class="param-desc">Загружаемый файл</td>
+            </tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>FileMetaEntity</td></tr>
+            <tr><td><span class="status-code status-400">400</span></td><td>Имя файла невалидно (path-traversal / запрещённые символы)</td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Квота превышена</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Папка не найдена или не принадлежит пользователю</td></tr>
+            <tr><td><span class="status-code status-401">401</span></td><td>Unauthorized</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PUT /api/files/{id} -->
+    <div class="opblock opblock-put">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">PUT</span>
+        <span class="opblock-summary-path">/api/files/{id}</span>
+        <span class="opblock-summary-description">Замена существующего файла 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Обновление (замена) существующего файла. Перезаписывает файл на диске по исходному пути, обновляет имя и размер в метаданных. Проверяется квота.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <thead><tr><th style="width:30%;">Name</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="param-name">id</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td>
+              <td class="param-desc">ID файла для замены</td>
+            </tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Request body</h4>
+        <p style="font-size:12px;color:#666;">multipart/form-data</p>
+        <table class="parameters">
+          <tbody>
+            <tr>
+              <td style="width:30%;"><span class="param-name">file</span><span class="param-required">*</span><div class="param-type">FilePart (binary)</div></td>
+              <td class="param-desc">Новый файл</td>
+            </tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>FileMetaEntity</td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Квота превышена</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Файл не найден</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PATCH /api/files/{id}/rename -->
+    <div class="opblock opblock-patch">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">PATCH</span>
+        <span class="opblock-summary-path">/api/files/{id}/rename</span>
+        <span class="opblock-summary-description">Переименование файла 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Переименование файла. Файл физически переименовывается на диске (тот же каталог),
+          в БД обновляются <code>filename</code>, <code>storage_path</code>, <code>updated_at</code>.
+          Новое имя проходит через <code>PathSanitizer</code>: не пустое, без <code>/</code>,
+          <code>\</code>, NUL, control-символов; не равно <code>.</code> или <code>..</code>;
+          не длиннее 255 символов. Файл должен быть не в корзине.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">id</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID файла</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Request body</h4>
+        <p style="font-size:12px;color:#666;">text/plain — новое имя файла как сырой текст (без JSON-кавычек)</p>
+        <pre class="code-block">new-name.txt</pre>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Обновлённый <code>FileMetaEntity</code></td></tr>
+            <tr><td><span class="status-code status-400">400</span></td><td>Имя невалидно (пустое, <code>.</code>/<code>..</code>, слэши, NUL/control, &gt; 255 символов)</td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Файл в корзине</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Файл не найден</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PATCH /api/files/{id}/move -->
+    <div class="opblock opblock-patch">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">PATCH</span>
+        <span class="opblock-summary-path">/api/files/{id}/move</span>
+        <span class="opblock-summary-description">Перемещение файла в другую папку 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Перемещение файла в указанную папку. Папка должна принадлежать текущему пользователю.
+          Файл физически переносится на диске (<code>Files.move</code> с <code>REPLACE_EXISTING</code>),
+          в БД обновляются <code>folder_id</code>, <code>storage_path</code>, <code>updated_at</code>.
+          Если в теле передан <code>null</code> — файл перемещается в корневую папку.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">id</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID файла</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Request body</h4>
+        <p style="font-size:12px;color:#666;">text/plain — UUID целевой папки как сырой текст (пустое тело = корень)</p>
+        <pre class="code-block">550e8400-e29b-41d4-a716-446655440000</pre>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Обновлённый <code>FileMetaEntity</code></td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Файл в корзине</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Файл или целевая папка не найдены</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- POST /api/files/{id}/copy -->
+    <div class="opblock opblock-post">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">POST</span>
+        <span class="opblock-summary-path">/api/files/{id}/copy</span>
+        <span class="opblock-summary-description">Копирование файла 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Копирование файла в указанную папку. Создаёт физическую копию файла (<code>Files.copy</code>)
+          и новую запись в <code>metadata</code> с новым <code>UUID</code>. Проверяется квота пользователя.
+          При коллизии имени в целевой папке к имени добавляется суффикс <code>" (copy N)"</code>.
+          Если в теле передан <code>null</code> — копия создаётся в корневой папке.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">id</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID исходного файла</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Request body</h4>
+        <p style="font-size:12px;color:#666;">text/plain — UUID папки назначения как сырой текст (пустое тело = корень)</p>
+        <pre class="code-block">550e8400-e29b-41d4-a716-446655440000</pre>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Новый <code>FileMetaEntity</code> (копия)</td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Файл в корзине / превышена квота</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Файл или целевая папка не найдены</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- POST /api/files/{id}/restore -->
+    <div class="opblock opblock-post">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">POST</span>
+        <span class="opblock-summary-path">/api/files/{id}/restore</span>
+        <span class="opblock-summary-description">Восстановление файла из корзины 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Восстановление файла из корзины в его исходную папку (по сохранённому <code>folder_id</code>).
+          Файл физически переносится из <code>bin_&lt;userId&gt;</code> обратно в исходный каталог,
+          <code>deleted_at</code> сбрасывается в NULL, обновляется <code>storage_path</code>.
+          Возможно только для файлов с <code>deleted_at != null</code>.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">id</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID файла в корзине</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Восстановленный <code>FileMetaEntity</code></td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Файл не в корзине</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Файл или исходная папка не найдены</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- DELETE /api/files/{id} -->
+    <div class="opblock opblock-delete">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">DELETE</span>
+        <span class="opblock-summary-path">/api/files/{id}</span>
+        <span class="opblock-summary-description">Soft-delete файла (в корзину) 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Soft-delete файла. Физически перемещает файл в папку корзины <code>bin_&lt;userId&gt;</code>, устанавливает <code>deleted_at</code> в таблице <code>metadata</code>.
+          Файл не удаляется из БД. Повторное удаление невозможно (если <code>deleted_at != null</code> — 403).
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">id</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID файла</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Body: <code>"Successfully deleted file"</code></td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Файл уже удалён</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Файл не найден или не принадлежит пользователю</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- DELETE /api/files/{id}/purge -->
+    <div class="opblock opblock-delete">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">DELETE</span>
+        <span class="opblock-summary-path">/api/files/{id}/purge</span>
+        <span class="opblock-summary-description">Жёсткое удаление файла 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Жёсткое (постоянное) удаление файла из корзины. Удаляет файл с диска и запись из таблицы <code>metadata</code>. Возможно только для файлов с <code>deleted_at != null</code>.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">id</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID файла</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Body: <code>"Successfully purged file"</code></td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Файл не в корзине / уже удалён</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Файл не найден</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- GET /api/files/{id} -->
+    <div class="opblock opblock-get">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">GET</span>
+        <span class="opblock-summary-path">/api/files/{id}</span>
+        <span class="opblock-summary-description">Скачивание файла 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Скачивание файла. Возвращает содержимое файла с диска (<code>FileSystemResource</code>).
+          Заголовки: <code>Content-Type</code> из метаданных и <code>Content-Disposition: attachment; filename="&lt;filename&gt;"</code>.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">id</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID файла</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Бинарный поток файла (Resource)</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Файл не найден в БД или на диске</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- GET /api/files/{id}/meta -->
+    <div class="opblock opblock-get">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">GET</span>
+        <span class="opblock-summary-path">/api/files/{id}/meta</span>
+        <span class="opblock-summary-description">Получение метаданных файла 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Получение метаданных файла (без тела файла). Возвращает <code>FileMetaEntity</code> из таблицы <code>metadata</code>.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">id</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID файла</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>FileMetaEntity</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Не найдено</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAG: FOLDERS ============ -->
+  <div class="opblock-tag-section">
+    <h3 class="opblock-tag">
+      folders
+      <span class="tag-desc">Управление папками 🔒 JWT</span>
+    </h3>
+
+    <!-- POST /api/files/folders/create -->
+    <div class="opblock opblock-post">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">POST</span>
+        <span class="opblock-summary-path">/api/files/folders/create</span>
+        <span class="opblock-summary-description">Создание новой папки 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Создание новой папки. Если <code>parentFolderId = null</code> — папка создаётся как дочерняя корневой.
+          Иначе — дочерняя указанной. Физически создаётся директория на диске. Проверяется уникальность имени в рамках родителя.
+          Имя папки проходит через <code>PathSanitizer</code> (не пустое, без слэшей, без
+          <code>.</code>/<code>..</code>/NUL/control, ≤ 255 символов).
+        </div>
+        <h4 class="opblock-section-header">Request body</h4>
+        <p style="font-size:12px;color:#666;">application/json — <code>CreateFolderRequest</code></p>
+        <pre class="code-block">{
+  <span class="key">"name"</span>: <span class="str">"string"</span>,
+  <span class="key">"parentFolderId"</span>: <span class="str">"uuid | null"</span>
+}</pre>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Возвращает <code>FolderEntity</code></td></tr>
+            <tr><td><span class="status-code status-400">400</span></td><td>Имя папки невалидно (path-traversal / запрещённые символы)</td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Папка с таким именем уже существует</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Родительская папка не найдена</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- GET /api/files/folders/root/content -->
+    <div class="opblock opblock-get">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">GET</span>
+        <span class="opblock-summary-path">/api/files/folders/root/content</span>
+        <span class="opblock-summary-description">Содержимое корневой папки 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Получение содержимого корневой папки текущего пользователя — список вложенных папок и файлов.
+          Если корневая папка ещё не существует — она будет создана автоматически.
+        </div>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td><code>FolderContent</code> { currentFolder, subFolders[], files[] }</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- GET /api/files/folders/root/meta -->
+    <div class="opblock opblock-get">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">GET</span>
+        <span class="opblock-summary-path">/api/files/folders/root/meta</span>
+        <span class="opblock-summary-description">Метаданные корневой папки 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Получение метаданных корневой папки пользователя (без содержимого).
+        </div>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td><code>FolderMeta</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- GET /api/files/folders/bin/content -->
+    <div class="opblock opblock-get">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">GET</span>
+        <span class="opblock-summary-path">/api/files/folders/bin/content</span>
+        <span class="opblock-summary-description">Содержимое корзины 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Получение содержимого корзины текущего пользователя — список удалённых файлов и папок,
+          лежащих непосредственно в корне <code>bin_&lt;userId&gt;</code>. Удалённая папка попадает в
+          корзину как одно целое: её содержимое не «распаковывается» — оно остаётся внутри. Если
+          корзина ещё не создана — она будет создана автоматически.
+        </div>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td><code>FolderContent</code> { currentFolder, subFolders[], files[] }</td></tr>
+            <tr><td><span class="status-code status-401">401</span></td><td>Unauthorized</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- GET /api/files/folders/bin/meta -->
+    <div class="opblock opblock-get">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">GET</span>
+        <span class="opblock-summary-path">/api/files/folders/bin/meta</span>
+        <span class="opblock-summary-description">Метаданные корзины 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Получение метаданных папки-корзины пользователя (без содержимого). Если корзина ещё не
+          создана — будет создана автоматически.
+        </div>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td><code>FolderMeta</code></td></tr>
+            <tr><td><span class="status-code status-401">401</span></td><td>Unauthorized</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- GET /api/files/folders/{folderId}/content -->
+    <div class="opblock opblock-get">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">GET</span>
+        <span class="opblock-summary-path">/api/files/folders/{folderId}/content</span>
+        <span class="opblock-summary-description">Содержимое папки 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Получение содержимого конкретной папки (вложенные папки + файлы). Папка должна принадлежать текущему пользователю.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">folderId</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID папки</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td><code>FolderContent</code></td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Папка не найдена или не принадлежит пользователю</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- GET /api/files/folders/{folderId}/meta -->
+    <div class="opblock opblock-get">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">GET</span>
+        <span class="opblock-summary-path">/api/files/folders/{folderId}/meta</span>
+        <span class="opblock-summary-description">Метаданные папки 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Получение метаданных конкретной папки (без содержимого).
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">folderId</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID папки</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td><code>FolderMeta</code></td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Не найдено</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- DELETE /api/files/folders/{folderId} -->
+    <div class="opblock opblock-delete">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">DELETE</span>
+        <span class="opblock-summary-path">/api/files/folders/{folderId}</span>
+        <span class="opblock-summary-description">Soft-delete папки рекурсивно 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Soft-delete папки и всего её содержимого рекурсивно. Файлы перемещаются в <code>bin_&lt;userId&gt;</code>,
+          у папок устанавливается <code>deleted_at</code>. Обход — depth-first, от листьев к корню.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">folderId</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID папки</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Body: <code>"Successfully deleted folder"</code></td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Папка не найдена</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- DELETE /api/files/folders/{folderId}/purge -->
+    <div class="opblock opblock-delete">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">DELETE</span>
+        <span class="opblock-summary-path">/api/files/folders/{folderId}/purge</span>
+        <span class="opblock-summary-description">Жёсткое удаление папки рекурсивно 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Жёсткое (постоянное) удаление папки. Рекурсивно удаляет все вложенные папки и файлы с диска и из БД (через <code>Files.deleteIfExists</code>).
+          Записи папок удаляются из таблицы <code>folders</code>.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">folderId</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID папки</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Body: <code>"Successfully purged folder"</code></td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Папка не найдена / директория не найдена на диске</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PATCH /api/files/folders/{folderId}/rename -->
+    <div class="opblock opblock-patch">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">PATCH</span>
+        <span class="opblock-summary-path">/api/files/folders/{folderId}/rename</span>
+        <span class="opblock-summary-description">Переименование папки 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Переименование папки. Каталог переименовывается на диске
+          (<code>Files.move</code>), в БД обновляется <code>name</code>, а у всех файлов в
+          поддереве пересчитывается <code>storage_path</code> через рекурсивный CTE.
+          Системные папки (<code>root_…</code>, <code>bin_…</code>) переименовать нельзя.
+          Если в той же родительской папке уже есть папка с таким именем — <code>409</code>.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">folderId</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID папки</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Request body</h4>
+        <p style="font-size:12px;color:#666;">text/plain — новое имя папки как сырой текст (без JSON-кавычек, без слэшей)</p>
+        <pre class="code-block">Документы 2026</pre>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Обновлённый <code>FolderEntity</code></td></tr>
+            <tr><td><span class="status-code status-400">400</span></td><td>Имя невалидно (пустое, <code>.</code>/<code>..</code>, слэши, NUL/control, &gt; 255 символов)</td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Системная папка (root_/bin_)</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Папка не найдена</td></tr>
+            <tr><td><span class="status-code status-409">409</span></td><td>Имя уже занято в этой родительской папке</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- POST /api/files/folders/{folderId}/restore -->
+    <div class="opblock opblock-post">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">POST</span>
+        <span class="opblock-summary-path">/api/files/folders/{folderId}/restore</span>
+        <span class="opblock-summary-description">Восстановление папки из корзины 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Восстановление soft-удалённой папки. Очищает <code>deleted_at</code> у самой папки и всех её
+          потомков (как вложенных папок, так и файлов в них). Операция, обратная
+          <code>DELETE /api/files/folders/{folderId}</code>.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">folderId</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID папки в корзине</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Восстановленный <code>FolderEntity</code></td></tr>
+            <tr><td><span class="status-code status-409">409</span></td><td>Папка не была удалена</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Папка не найдена</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PATCH /api/files/folders/{folderId}/move -->
+    <div class="opblock opblock-patch">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">PATCH</span>
+        <span class="opblock-summary-path">/api/files/folders/{folderId}/move</span>
+        <span class="opblock-summary-description">Перемещение папки в другого родителя 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Перемещение папки в новую родительскую папку. Целевой родитель должен принадлежать
+          текущему пользователю и не быть потомком перемещаемой папки (иначе образуется цикл).
+          Папка переносится на диске целиком (<code>Files.move</code>), а у всех файлов внутри
+          поддерева пересчитывается <code>storage_path</code> через рекурсивный CTE.
+          Системные папки (<code>root_…</code>, <code>bin_…</code>) перемещать нельзя.
+          Передайте пустое тело, чтобы переместить в корень.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">folderId</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID перемещаемой папки</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Request body</h4>
+        <p style="font-size:12px;color:#666;">text/plain — UUID нового родителя как сырой текст (пустое тело = корень)</p>
+        <pre class="code-block">550e8400-e29b-41d4-a716-446655440000</pre>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Обновлённый <code>FolderEntity</code></td></tr>
+            <tr><td><span class="status-code status-400">400</span></td><td>Попытка переместить папку в саму себя или в свой потомок</td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Системная папка (root_/bin_)</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Папка или целевой родитель не найдены</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- POST /api/files/folders/{folderId}/copy -->
+    <div class="opblock opblock-post">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">POST</span>
+        <span class="opblock-summary-path">/api/files/folders/{folderId}/copy</span>
+        <span class="opblock-summary-description">Рекурсивное копирование папки 🔒</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Рекурсивное копирование папки и всего её содержимого (вложенные папки + файлы).
+          Структура сохраняется, для всех файлов создаются новые записи в <code>metadata</code>
+          с собственным <code>UUID</code>. При коллизии имени в целевой папке на верхнем уровне
+          добавляется суффикс <code>" (копия)"</code> / <code>" (копия 2)"</code> / …
+          Системные папки копировать нельзя. Удалённые элементы внутри поддерева пропускаются.
+          Передайте пустое тело, чтобы скопировать в корень.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">folderId</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID исходной папки</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Request body</h4>
+        <p style="font-size:12px;color:#666;">text/plain — UUID папки назначения как сырой текст (пустое тело = корень)</p>
+        <pre class="code-block">550e8400-e29b-41d4-a716-446655440000</pre>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Корень новой иерархии — <code>FolderEntity</code></td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Системная папка (root_/bin_)</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Папка или целевой родитель не найдены</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAG: ADMIN ============ -->
+  <div class="opblock-tag-section">
+    <h3 class="opblock-tag">
+      admin
+      <span class="tag-desc">Административная панель 🔒 ROLE_ADMIN</span>
+    </h3>
+
+    <!-- GET /admin/users -->
+    <div class="opblock opblock-get">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">GET</span>
+        <span class="opblock-summary-path">/admin/users</span>
+        <span class="opblock-summary-description">Список всех пользователей с их квотой 🔒 ADMIN</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Возвращает список всех зарегистрированных пользователей. Для каждого пользователя
+          подсчитывается фактически занятое место (сумма размеров не удалённых файлов),
+          количество файлов и общая квота (<code>storage.quota</code>).
+        </div>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Массив <code>UserInfo</code></td></tr>
+            <tr><td><span class="status-code status-401">401</span></td><td>Нет JWT</td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>JWT не от админа (нет ROLE_ADMIN)</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Example response</h4>
+        <pre class="code-block">[
+  {
+    <span class="key">"id"</span>: <span class="str">"3f1b…"</span>,
+    <span class="key">"username"</span>: <span class="str">"alice"</span>,
+    <span class="key">"role"</span>: <span class="str">"USER"</span>,
+    <span class="key">"usedBytes"</span>: 184320512,
+    <span class="key">"quotaBytes"</span>: 10737418240,
+    <span class="key">"fileCount"</span>: 42
+  }
+]</pre>
+      </div>
+    </div>
+
+    <!-- GET /admin/users/{userId} -->
+    <div class="opblock opblock-get">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">GET</span>
+        <span class="opblock-summary-path">/admin/users/{userId}</span>
+        <span class="opblock-summary-description">Информация о пользователе 🔒 ADMIN</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          Возвращает информацию о конкретном пользователе по его ID — те же поля, что и в списке.
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">userId</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID пользователя</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td><code>UserInfo</code></td></tr>
+            <tr><td><span class="status-code status-401">401</span></td><td>Нет JWT</td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Нет ROLE_ADMIN</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Пользователь не найден</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- DELETE /admin/users/{userId} -->
+    <div class="opblock opblock-delete">
+      <div class="opblock-summary" onclick="this.parentElement.classList.toggle('is-open')">
+        <span class="opblock-summary-method">DELETE</span>
+        <span class="opblock-summary-path">/admin/users/{userId}</span>
+        <span class="opblock-summary-description">Удалить пользователя со всеми данными 🔒 ADMIN</span>
+      </div>
+      <div class="opblock-body">
+        <div class="opblock-description">
+          <strong>⚠ Деструктивная операция.</strong> Полностью удаляет пользователя:
+          <ul style="margin: 8px 0 0 22px;">
+            <li>запись в таблице <code>users</code> удаляется</li>
+            <li>записи в <code>folders</code> и <code>metadata</code> удаляются автоматически по <code>ON DELETE CASCADE</code></li>
+            <li>каталог пользователя <code>./uploads/&lt;userId&gt;/</code> удаляется рекурсивно с диска</li>
+          </ul>
+        </div>
+        <h4 class="opblock-section-header">Parameters</h4>
+        <table class="parameters">
+          <tbody>
+            <tr><td style="width:30%;"><span class="param-name">userId</span><span class="param-in">path</span><span class="param-required">*</span><div class="param-type">UUID</div></td><td class="param-desc">ID пользователя</td></tr>
+          </tbody>
+        </table>
+        <h4 class="opblock-section-header">Responses</h4>
+        <table class="responses-table">
+          <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="status-code status-200">200</span></td><td>Body: <code>"User &lt;id&gt; deleted"</code></td></tr>
+            <tr><td><span class="status-code status-401">401</span></td><td>Нет JWT</td></tr>
+            <tr><td><span class="status-code status-403">403</span></td><td>Нет ROLE_ADMIN</td></tr>
+            <tr><td><span class="status-code status-404">404</span></td><td>Пользователь не найден</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SCHEMAS ============ -->
+  <div class="models">
+    <h4>Schemas</h4>
+
+    <div class="model-box">
+      <div class="model-name">AuthRequest <span class="model-type">record</span></div>
+      <pre class="code-block">{
+  <span class="key">username</span>:  string,
+  <span class="key">password</span>:  string
+}</pre>
+    </div>
+
+    <div class="model-box">
+      <div class="model-name">AuthResponse <span class="model-type">Map&lt;String, String&gt;</span></div>
+      <pre class="code-block">{
+  <span class="key">token</span>: string  <span class="com">// JWT</span>
+}</pre>
+    </div>
+
+    <div class="model-box">
+      <div class="model-name">UserEntity <span class="model-type">table: users</span></div>
+      <pre class="code-block">{
+  <span class="key">id</span>:        UUID         <span class="com">// PK, gen_random_uuid()</span>
+  <span class="key">username</span>:  string       <span class="com">// UNIQUE, NOT NULL</span>
+  <span class="key">password</span>:  string       <span class="com">// BCrypt hash, NOT NULL</span>
+  <span class="key">role</span>:      string       <span class="com">// DEFAULT 'USER'</span>
+}</pre>
+    </div>
+
+    <div class="model-box">
+      <div class="model-name">AdminEntity <span class="model-type">table: admins</span></div>
+      <pre class="code-block">{
+  <span class="key">id</span>:        UUID         <span class="com">// PK, gen_random_uuid()</span>
+  <span class="key">username</span>:  string       <span class="com">// NOT NULL</span>
+  <span class="key">password</span>:  string       <span class="com">// BCrypt hash, NOT NULL</span>
+  <span class="key">role</span>:      string       <span class="com">// 'ADMIN'</span>
+}</pre>
+    </div>
+
+    <div class="model-box">
+      <div class="model-name">FileMetaEntity <span class="model-type">table: metadata</span></div>
+      <pre class="code-block">{
+  <span class="key">id</span>:           UUID,
+  <span class="key">filename</span>:     string,        <span class="com">// NOT NULL</span>
+  <span class="key">contentType</span>:  string,        <span class="com">// MIME-type</span>
+  <span class="key">size</span>:         long,          <span class="com">// bytes, NOT NULL</span>
+  <span class="key">storagePath</span>:  string,        <span class="com">// absolute path on disk</span>
+  <span class="key">uploadedAt</span>:   Instant,
+  <span class="key">ownerId</span>:      UUID,          <span class="com">// FK -&gt; users.id</span>
+  <span class="key">folderId</span>:     UUID | null,   <span class="com">// FK -&gt; folders.id</span>
+  <span class="key">deletedAt</span>:    Instant | null,
+  <span class="key">updatedAt</span>:    Instant | null
+}</pre>
+    </div>
+
+    <div class="model-box">
+      <div class="model-name">FolderEntity <span class="model-type">table: folders</span></div>
+      <pre class="code-block">{
+  <span class="key">id</span>:              UUID,
+  <span class="key">name</span>:            string,         <span class="com">// NOT NULL</span>
+  <span class="key">parentFolderId</span>:  UUID | null,    <span class="com">// FK -&gt; folders.id</span>
+  <span class="key">ownerId</span>:         UUID,           <span class="com">// FK -&gt; users.id</span>
+  <span class="key">createdAt</span>:       Instant,
+  <span class="key">deletedAt</span>:       Instant | null
+}</pre>
+    </div>
+
+    <div class="model-box">
+      <div class="model-name">FolderContent <span class="model-type">record</span></div>
+      <pre class="code-block">{
+  <span class="key">currentFolder</span>:  FolderEntity,
+  <span class="key">subFolders</span>:     FolderEntity[],
+  <span class="key">files</span>:          FileMetaEntity[]
+}</pre>
+    </div>
+
+    <div class="model-box">
+      <div class="model-name">FolderMeta <span class="model-type">record</span></div>
+      <pre class="code-block">{
+  <span class="key">folderId</span>:   UUID,
+  <span class="key">name</span>:       string,
+  <span class="key">parentId</span>:   UUID | null,
+  <span class="key">ownerId</span>:    UUID,
+  <span class="key">createdAt</span>:  Instant,
+  <span class="key">deletedAt</span>:  Instant | null
+}</pre>
+    </div>
+
+    <div class="model-box">
+      <div class="model-name">UserInfo <span class="model-type">record (admin DTO)</span></div>
+      <pre class="code-block">{
+  <span class="key">id</span>:          UUID,
+  <span class="key">username</span>:    string,
+  <span class="key">role</span>:        string,        <span class="com">// "USER" / "ADMIN"</span>
+  <span class="key">usedBytes</span>:   long,          <span class="com">// sum of non-deleted files</span>
+  <span class="key">quotaBytes</span>:  long,          <span class="com">// per-user quota (storage.quota)</span>
+  <span class="key">fileCount</span>:   long           <span class="com">// non-deleted files count</span>
+}</pre>
+    </div>
+
+    <div class="model-box">
+      <div class="model-name">CreateFolderRequest <span class="model-type">record</span></div>
+      <pre class="code-block">{
+  <span class="key">name</span>:            string,
+  <span class="key">parentFolderId</span>:  UUID | null    <span class="com">// null = root</span>
+}</pre>
+    </div>
+
+    <div class="model-box">
+      <div class="model-name">Error response <span class="model-type">GlobalExceptionHandler</span></div>
+      <pre class="code-block"><span class="com">// ResponseStatusException -&gt; status from ex.getStatusCode(), body = ex.getReason()</span>
+<span class="com">// RuntimeException        -&gt; 500, body = ex.getMessage()</span></pre>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Click on tag to collapse all operations under it
+  document.querySelectorAll('.opblock-tag').forEach(tag => {
+    tag.addEventListener('click', () => {
+      const section = tag.parentElement;
+      const open = section.querySelectorAll('.opblock.is-open').length > 0;
+      section.querySelectorAll('.opblock').forEach(op => {
+        op.classList.toggle('is-open', !open);
+      });
+    });
+  });
+</script>
+
+</body>
+</html>
