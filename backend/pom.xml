@@ -89,6 +89,24 @@
         <groupId>org.projectlombok</groupId>
         <artifactId>lombok</artifactId>
       </dependency>
+      <!-- TOTP (RFC-6238) for FR#17 two-factor authentication -->
+      <dependency>
+        <groupId>dev.samstevens.totp</groupId>
+        <artifactId>totp</artifactId>
+        <version>1.7.1</version>
+      </dependency>
+      <!-- Image preview (FR#16, NFT#5). Pure-Java, no native deps. -->
+      <dependency>
+        <groupId>net.coobird</groupId>
+        <artifactId>thumbnailator</artifactId>
+        <version>0.4.20</version>
+      </dependency>
+      <!-- PDF first-page preview (FR#16) — render-to-image. -->
+      <dependency>
+        <groupId>org.apache.pdfbox</groupId>
+        <artifactId>pdfbox</artifactId>
+        <version>3.0.3</version>
+      </dependency>
       <!-- Test dependencies -->
       <dependency>
         <groupId>org.springframework.boot</groupId>

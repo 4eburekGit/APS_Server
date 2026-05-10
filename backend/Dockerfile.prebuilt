@@ -1,0 +1,33 @@
+# =========================================================
+# APS_Server backend — runtime-only build that consumes a fat jar
+# already produced locally (target/server-*.jar).
+#
+# Used on hosts where building Maven inside Docker would OOM (small
+# VMs with <1 GB RAM). Build the jar with `mvn -q clean package`
+# locally, then `docker compose -f compose.yml -f compose.prebuilt.yml
+# up -d --build backend`.
+# =========================================================
+
+FROM eclipse-temurin:21-jre AS runtime
+WORKDIR /app
+
+RUN groupadd -r app && useradd -r -g app app \
+ && mkdir -p /app/uploads \
+ && chown -R app:app /app
+
+# The fat jar must exist in the build context at target/. Compose ships
+# the whole backend dir as context, so target/server-0.0.1-SNAPSHOT.jar
+# travels with it.
+COPY target/server-0.0.1-SNAPSHOT.jar /app/app.jar
+
+USER app
+EXPOSE 8080
+VOLUME ["/app/uploads"]
+
+ENV JAVA_OPTS=""
+ENV STORAGE_PATH=/app/uploads
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=8 \
+  CMD bash -c "</dev/tcp/127.0.0.1/8080" || exit 1
+
+ENTRYPOINT ["sh","-c","exec java $JAVA_OPTS -jar /app/app.jar"]
