@@ -10,3 +10,6 @@ Older branch, no front-end compatibility, simply there to show progress pre-move
 
 # dev branch
 Active dev branch maintained by back-end developer (me - 4eburekGit) and tester (GT34M)
+
+# API docs
+Can be found at GitHub Pages-powered: https://4eburekgit.github.io/APS_Server-docs/
