@@ -33,18 +33,45 @@ public class FileController {
     private final StorageController storageController;
     private final FolderController folderController;
     private final FileMetaRepo metadataRepository;
+    private final AuditService auditService;
 
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public Mono<FileMetaEntity> uploadFileToRoot(@RequestPart("file") Mono<FilePart> filePartMono) {
-        return filePartMono.flatMap(filePart -> storageController.saveFile(filePart, null));
+    public Mono<FileMetaEntity> uploadFileToRoot(
+            @RequestPart("file") Mono<FilePart> filePartMono,
+            org.springframework.http.server.reactive.ServerHttpRequest request) {
+        return filePartMono.flatMap(filePart -> storageController.saveFile(filePart, null))
+                .flatMap(meta -> auditService.record(meta.getOwnerId(), "upload",
+                        "file", meta.getId(), clientIp(request)).thenReturn(meta));
     }
-    
+
     @PostMapping(value = "/upload/to/{folderId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Mono<FileMetaEntity> uploadFileTo(
             @RequestPart("file") Mono<FilePart> filePartMono,
             @PathVariable UUID folderId) {
         return filePartMono.flatMap(filePart -> storageController.saveFile(filePart, folderId));
+    }
+
+    /* =========================================================
+       FR#1 (folder upload) + FR#20 (drag-and-drop). Accepts a multipart
+       with N "files" parts. Each part's filename is the FULL relative path
+       (slash-separated, e.g. "subdir/nested/img.jpg"). Server creates any
+       missing intermediate folders, then saves each file in its leaf
+       folder. Concurrency is bounded (4 in flight) so we don't blow up
+       the R2DBC pool on big trees.
+       Optional path param: target parent folder (default = user root).
+       ========================================================= */
+    @PostMapping(value = "/upload-tree", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Flux<FileMetaEntity> uploadTreeToRoot(
+            @RequestPart("files") Flux<FilePart> parts) {
+        return storageController.saveFileTree(parts, null);
+    }
+
+    @PostMapping(value = "/upload-tree/to/{folderId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Flux<FileMetaEntity> uploadTreeTo(
+            @RequestPart("files") Flux<FilePart> parts,
+            @PathVariable UUID folderId) {
+        return storageController.saveFileTree(parts, folderId);
     }
     
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -81,11 +108,13 @@ public class FileController {
     }
     
     @DeleteMapping("/{id}")
-    public Mono<ResponseEntity<String>> deleteFile(@PathVariable UUID id) {
+    public Mono<ResponseEntity<String>> deleteFile(
+            @PathVariable UUID id,
+            org.springframework.http.server.reactive.ServerHttpRequest request) {
     	return storageController.getFileMetadata(id)
-    			.flatMap(metadata -> {
-    				return storageController.deleteFile(id);
-    			})
+    			.flatMap(metadata -> storageController.deleteFile(id)
+    			        .then(auditService.record(metadata.getOwnerId(), "delete-file",
+    			                "file", id, clientIp(request))))
     			.then(Mono.just(ResponseEntity.ok("Successfully deleted file")));
     }
     
@@ -99,8 +128,13 @@ public class FileController {
     }
 
     @GetMapping("/{id}")
-    public Mono<ResponseEntity<Resource>> downloadFile(@PathVariable UUID id) {
+    public Mono<ResponseEntity<Resource>> downloadFile(
+            @PathVariable UUID id,
+            org.springframework.http.server.reactive.ServerHttpRequest request) {
         return storageController.getFileMetadata(id)
+                .flatMap(metadata -> auditService.record(metadata.getOwnerId(), "download",
+                                "file", id, clientIp(request))
+                        .thenReturn(metadata))
                 .flatMap(metadata -> {
                     Path path = Path.of(metadata.getStoragePath());
                     Resource resource = new FileSystemResource(path);
@@ -128,8 +162,10 @@ public class FileController {
     }
 
     @GetMapping("/folders/root/content")
-    public Mono<FolderController.FolderContent> getRootContent() {
-        return folderController.getRootContent();
+    public Mono<FolderController.FolderContent> getRootContent(
+            @RequestParam(value = "sort", required = false) String sort,
+            @RequestParam(value = "dir",  required = false) String dir) {
+        return folderController.getRootContent(FolderController.SortSpec.parse(sort, dir));
     }
 
     @GetMapping("/folders/root/meta")
@@ -144,8 +180,10 @@ public class FileController {
      * listing of trashed items in one call.
      */
     @GetMapping("/folders/bin/content")
-    public Mono<FolderController.FolderContent> getBinContent() {
-        return folderController.getBinContent();
+    public Mono<FolderController.FolderContent> getBinContent(
+            @RequestParam(value = "sort", required = false) String sort,
+            @RequestParam(value = "dir",  required = false) String dir) {
+        return folderController.getBinContent(FolderController.SortSpec.parse(sort, dir));
     }
 
     @GetMapping("/folders/bin/meta")
@@ -161,8 +199,11 @@ public class FileController {
     }
 
     @GetMapping("/folders/{folderId}/content")
-    public Mono<FolderController.FolderContent> getFolderContent(@PathVariable UUID folderId) {
-        return folderController.getFolderContent(folderId);
+    public Mono<FolderController.FolderContent> getFolderContent(
+            @PathVariable UUID folderId,
+            @RequestParam(value = "sort", required = false) String sort,
+            @RequestParam(value = "dir",  required = false) String dir) {
+        return folderController.getFolderContent(folderId, FolderController.SortSpec.parse(sort, dir));
     }
     
     @GetMapping("/folders/{folderId}/meta")
@@ -208,7 +249,76 @@ public class FileController {
         return folderController.renameFolder(folderId, newName);
     }
 
+    /* =========================================================
+       FR#1 / FR#20 — download a folder as a single ZIP archive. The
+       backend builds a temp .zip on disk, streams it as the response,
+       and deletes it once the response completes. Audit-logged the
+       same way as a single-file download.
+       ========================================================= */
+    @GetMapping("/folders/{folderId}/download.zip")
+    public Mono<ResponseEntity<Resource>> downloadFolderZip(
+            @PathVariable UUID folderId,
+            org.springframework.http.server.reactive.ServerHttpRequest request) {
+        return folderController.zipFolder(folderId)
+                .flatMap(zipPath -> folderController.getFolderMeta(folderId)
+                        .map(meta -> {
+                            String safe = (meta.name() == null ? "folder" : meta.name())
+                                    .replaceAll("[^A-Za-z0-9_.-]", "_");
+                            Resource resource = new FileSystemResource(zipPath) {
+                                // Best-effort cleanup once the streaming finishes.
+                                // Spring closes the InputStream after the body is sent;
+                                // hooking finalize-style cleanup is brittle, so we
+                                // schedule deletion via Path.toFile().deleteOnExit() too.
+                                @Override
+                                public java.io.InputStream getInputStream() throws java.io.IOException {
+                                    java.io.InputStream in = super.getInputStream();
+                                    return new java.io.FilterInputStream(in) {
+                                        @Override public void close() throws java.io.IOException {
+                                            try { super.close(); } finally {
+                                                try { java.nio.file.Files.deleteIfExists(zipPath); }
+                                                catch (Exception ignored) { /* leave for OS */ }
+                                            }
+                                        }
+                                    };
+                                }
+                            };
+                            // Fall back to deleteOnExit if close() never fires (e.g. client abort).
+                            zipPath.toFile().deleteOnExit();
+                            return ResponseEntity.ok()
+                                    .contentType(MediaType.parseMediaType("application/zip"))
+                                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                                            ContentDisposition.attachment()
+                                                    .filename(safe + ".zip")
+                                                    .build()
+                                                    .toString())
+                                    .body((Resource) resource);
+                        })
+                        .flatMap(resp -> auditService.record(null, "download-folder",
+                                "folder", folderId, clientIp(request))
+                                .thenReturn(resp)));
+    }
+
     public record CreateFolderRequest(String name, UUID parentFolderId) {}
+
+    /** GET /api/files/{id}/audit — show recent events on this file. */
+    @GetMapping("/{id}/audit")
+    public Flux<AuditEntity> fileAudit(@PathVariable UUID id) {
+        return storageController.getFileMetadata(id)
+                .flatMapMany(meta -> auditService.forTarget("file", id));
+    }
+
+    /** Pull client IP from header chain (X-Forwarded-For first, then remote). */
+    private static String clientIp(org.springframework.http.server.reactive.ServerHttpRequest req) {
+        if (req == null) return null;
+        String h = req.getHeaders().getFirst("X-Forwarded-For");
+        if (h != null && !h.isBlank()) {
+            int comma = h.indexOf(',');
+            return comma < 0 ? h.trim() : h.substring(0, comma).trim();
+        }
+        return req.getRemoteAddress() == null
+                ? null
+                : req.getRemoteAddress().getAddress().getHostAddress();
+    }
 
     /**
      * Parse a UUID from a raw text/plain body. Empty/blank/whitespace = null,

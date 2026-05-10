@@ -19,6 +19,9 @@ public class UserEntity implements UserDetails, IdentifiedPrincipal {
     private String username;
     private String password;
     private String role; // will be extended to proper sharing roles
+    // FR#17 TOTP 2FA. totpSecret is base32-encoded; nullable until enrolled.
+    private String totpSecret;
+    private Boolean totpEnabled;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

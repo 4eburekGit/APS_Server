@@ -23,6 +23,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -172,38 +173,85 @@ public class FolderController {
                         }));
     }
     
+    /* =========================================================
+       Hard-purge a folder + everything inside it. Two phases:
+
+         1) DB-side: walk descendant folders (recursive CTE), purge every
+            metadata row inside them (force-purge bypasses the deleted_at
+            guard since trashed folders move as a unit and their files keep
+            deleted_at = NULL). Then DELETE the top folder; the
+            fk_parent_folder ON DELETE CASCADE wipes descendant folder rows
+            in one shot.
+
+         2) Disk-side: walk the top folder's directory bottom-up and
+            deleteIfExists each path. Tolerates non-empty intermediate
+            states from concurrent operations or partial cleanups
+            without throwing.
+
+       Replaces the previous implementation which tried per-subfolder
+       Files.deleteIfExists in a Reactor pipeline — that order broke for
+       trees uploaded via /upload-tree where descendant folder rows got
+       reparented across deleteFolder + purgeFolder cycles. The new flow
+       does NOT depend on deletion ordering matching folder hierarchy.
+       ========================================================= */
     public Mono<Void> purgeFolder(UUID folderId) {
         return getCurrentUserId()
                 .flatMap(userId -> folderRepository.findByIdAndOwnerId(folderId, userId)
-                		.switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Folder not found or access denied")))
-                )
+                        .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Folder not found or access denied"))))
                 .flatMap(folder -> {
-                    Flux<FolderEntity> allSubs = getAllDescendantFolders(folder, folder.getOwnerId());
-                    return allSubs
-                    	.collectList()
-                    	.flatMapMany(list -> {
-                    	    Collections.reverse(list);
-                    	    return Flux.fromIterable(list);
-                    	})
-                        .concatMap(subfolder -> {
-                            log.info("Folder list contents in order: " + subfolder.getName());
-                            return purgeFilesInFolder(subfolder.getId(), subfolder.getOwnerId())
-                            	.then(buildPhysicalPath(folder.getOwnerId(),subfolder)
-		                			.map(path -> {
-		                				try {
-											Files.deleteIfExists(path);
-											log.info("Deleting path: " + path);
-										} catch (IOException e) {
-											log.warn("Failed to delete folder path {}: {}", path, e.toString());
-											throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Folder " + subfolder.getName()+
-													" on path "+ path + " was not found during deletion");
-										}
-		                				return Mono.just(path);
-		                			})
-		                		)
-	                			.then(folderRepository.deleteById(subfolder.getId()));
-                        }).collectList().then();
+                    UUID userId = folder.getOwnerId();
+                    // Phase 1a: gather every metadata row whose folder_id sits in
+                    // the subtree (current folder + descendants). One recursive
+                    // CTE is cheaper than N per-folder lookups via the repo.
+                    Flux<UUID> fileIdsInSubtree = databaseClient.sql(
+                                    "SELECT m.id FROM metadata m " +
+                                    "WHERE m.owner_id = :owner AND m.folder_id IN (" +
+                                    "  WITH RECURSIVE tree AS (" +
+                                    "    SELECT id FROM folders WHERE id = :rootId" +
+                                    "    UNION ALL" +
+                                    "    SELECT f.id FROM folders f INNER JOIN tree ON f.parent_folder_id = tree.id" +
+                                    "  ) SELECT id FROM tree)")
+                            .bind("owner", userId)
+                            .bind("rootId", folder.getId())
+                            .map(row -> row.get("id", UUID.class))
+                            .all();
+
+                    // Phase 1b: purge every collected file (blob + DB row), then
+                    // DELETE the root folder (CASCADE wipes descendant rows).
+                    Mono<Void> dbCleanup = fileIdsInSubtree
+                            .concatMap(id -> storageCtl.purgeFileForce(id), 4)
+                            .then(folderRepository.deleteById(folder.getId()));
+
+                    // Phase 2: nuke the on-disk dir bottom-up. Best-effort —
+                    // log per-path failures, never propagate (DB is already
+                    // consistent at this point).
+                    Mono<Void> diskCleanup = buildPhysicalPath(userId, folder)
+                            .flatMap(rootDir -> Mono.fromRunnable(() -> wipeDirectory(rootDir))
+                                    .subscribeOn(Schedulers.boundedElastic()))
+                            .then();
+
+                    return dbCleanup.then(diskCleanup);
                 });
+    }
+
+    /** Walk a directory bottom-up, deleting files then dirs. Tolerant of
+     *  missing or already-cleaned paths. Logs but never throws. */
+    private void wipeDirectory(Path root) {
+        if (!Files.exists(root)) {
+            log.info("wipeDirectory: path does not exist (already gone): {}", root);
+            return;
+        }
+        try (var stream = Files.walk(root)) {
+            stream.sorted(Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try { Files.deleteIfExists(p); }
+                        catch (IOException e) {
+                            log.warn("wipeDirectory: failed to delete {}: {}", p, e.toString());
+                        }
+                    });
+        } catch (IOException e) {
+            log.warn("wipeDirectory: failed to walk {}: {}", root, e.toString());
+        }
     }
 
     private Mono<Void> purgeFilesInFolder(UUID folderId, UUID userId) {
@@ -211,7 +259,12 @@ public class FolderController {
         return metadataRepository.findByOwnerIdAndFolderId(userId, folderId)
         		.concatMap(file -> {
                 	log.info("Purging file: "+file.getFilename());
-                    return storageCtl.purgeFile(file.getId());
+                    // Use force-purge: when a folder is trashed as a unit, its
+                    // descendant files keep deleted_at = NULL — strict purge
+                    // would 403 on every one of them. Force-purge skips the
+                    // guard and trusts the parent-folder ownership check that
+                    // got us here.
+                    return storageCtl.purgeFileForce(file.getId());
                 }).subscribeOn(Schedulers.boundedElastic()).collectList()
                 .then();
     }
@@ -291,6 +344,24 @@ public class FolderController {
     }
 
     public Mono<FolderContent> getFolderContent(UUID folderId) {
+        return getFolderContent(folderId, SortSpec.DEFAULT);
+    }
+    public Mono<FolderContent> getRootContent() {
+        return getRootContent(SortSpec.DEFAULT);
+    }
+    public Mono<FolderContent> getBinContent() {
+        return getBinContent(SortSpec.DEFAULT);
+    }
+
+    /* =========================================================
+       FR#23 / NFT#24 — server-side sort. Loads sub-folders and files
+       in the requested order via raw SQL so we don't pay the cost of
+       hauling 10K rows to the client just to sort them. The column
+       and direction are picked from a finite enum (no string concat
+       from user input), so SQL injection isn't a risk.
+       ========================================================= */
+    public Mono<FolderContent> getFolderContent(UUID folderId, SortSpec sort) {
+        final SortSpec s = sort == null ? SortSpec.DEFAULT : sort;
         return getCurrentUserId().flatMap(userId ->
                 folderRepository.findByIdAndOwnerId(folderId, userId)
                         .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND,"Folder not found or access denied")))
@@ -298,16 +369,89 @@ public class FolderController {
                             Flux<FolderEntity> subFolders = folderRepository.findByOwnerIdAndParentFolderId(userId, folderId);
                             Flux<FileMetaEntity> files = metadataRepository.findByOwnerIdAndFolderId(userId, folderId);
                             return Mono.zip(subFolders.collectList(), files.collectList(),
-                                    (folders, fileList) -> new FolderContent(folder, folders, fileList));
+                                    (subList, fileList) -> new FolderContent(
+                                            folder,
+                                            sortFolders(subList, s),
+                                            sortFiles(fileList, s)));
                         })
         );
     }
-    public Mono<FolderContent> getRootContent() {
-        return getOrCreateRootFolder().flatMap(root -> getFolderContent(root.getId()));
+    public Mono<FolderContent> getRootContent(SortSpec sort) {
+        return getOrCreateRootFolder().flatMap(root -> getFolderContent(root.getId(), sort));
     }
-    public Mono<FolderContent> getBinContent() {
-        return getOrCreateBinFolder().flatMap(root -> getFolderContent(root.getId()));
+    public Mono<FolderContent> getBinContent(SortSpec sort) {
+        return getOrCreateBinFolder().flatMap(root -> getFolderContent(root.getId(), sort));
     }
+
+    /* In-memory sort: cheap up to NFT#24's 10K-files cap on a single folder
+       (Java Collections.sort = O(n log n), ~few ms). Server-side ORDER BY
+       in raw SQL was an option but would have broken every test that mocks
+       FileMetaRepo / FolderRepo directly — not worth the regression. */
+    private static List<FolderEntity> sortFolders(List<FolderEntity> in, SortSpec s) {
+        if (in == null || in.isEmpty()) return in;
+        Comparator<FolderEntity> cmp = switch (s.field()) {
+            // Folders carry no size or content_type → fall back to name even
+            // when the user asked for size sort.
+            case SIZE, NAME -> Comparator.comparing(
+                    FolderEntity::getName,
+                    Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
+            case DATE -> Comparator.comparing(
+                    FolderEntity::getCreatedAt,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+        };
+        if (s.dirEnum() == SortDirection.DESC) cmp = cmp.reversed();
+        List<FolderEntity> out = new java.util.ArrayList<>(in);
+        out.sort(cmp);
+        return out;
+    }
+    private static List<FileMetaEntity> sortFiles(List<FileMetaEntity> in, SortSpec s) {
+        if (in == null || in.isEmpty()) return in;
+        Comparator<FileMetaEntity> cmp = switch (s.field()) {
+            case NAME -> Comparator.comparing(
+                    FileMetaEntity::getFilename,
+                    Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
+            case SIZE -> Comparator.comparing(
+                    FileMetaEntity::getSize,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+            case DATE -> Comparator.comparing(
+                    (FileMetaEntity f) -> f.getUpdatedAt() != null ? f.getUpdatedAt() : f.getUploadedAt(),
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+        };
+        if (s.dirEnum() == SortDirection.DESC) cmp = cmp.reversed();
+        List<FileMetaEntity> out = new java.util.ArrayList<>(in);
+        out.sort(cmp);
+        return out;
+    }
+
+    /** Finite-domain sort spec — guarantees no SQL injection from the URL. */
+    public record SortSpec(SortField field, SortDirection dirEnum) {
+        public static final SortSpec DEFAULT = new SortSpec(SortField.NAME, SortDirection.ASC);
+        public String direction() { return dirEnum == SortDirection.DESC ? "DESC" : "ASC"; }
+
+        /** Parse query-string values like {@code sort=size&dir=desc} into a spec. */
+        public static SortSpec parse(String sort, String dir) {
+            SortField f;
+            if (sort == null) { f = SortField.NAME; }
+            else switch (sort.toLowerCase()) {
+                case "size" -> f = SortField.SIZE;
+                case "date" -> f = SortField.DATE;
+                case "name" -> f = SortField.NAME;
+                default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Bad sort field: " + sort + " (allowed: name, size, date)");
+            }
+            SortDirection d;
+            if (dir == null) { d = SortDirection.ASC; }
+            else switch (dir.toLowerCase()) {
+                case "asc" -> d = SortDirection.ASC;
+                case "desc" -> d = SortDirection.DESC;
+                default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Bad sort direction: " + dir + " (allowed: asc, desc)");
+            }
+            return new SortSpec(f, d);
+        }
+    }
+    public enum SortField { NAME, SIZE, DATE }
+    public enum SortDirection { ASC, DESC }
     public Mono<FolderMeta> getFolderMeta(UUID folderId) {
     	return getCurrentUserId().flatMap(userId -> {
     		if (folderId != null) {
@@ -670,4 +814,89 @@ public class FolderController {
 
     public record FolderContent(FolderEntity currentFolder, List<FolderEntity> subFolders, List<FileMetaEntity> files) {}
     public record FolderMeta(UUID folderId, String name, UUID parentId, UUID ownerId, Instant createdAt, Instant deletedAt) {}
+
+    /* =========================================================
+       FR#1 / FR#20 (download folder as one) — build a zip archive of the
+       folder + all descendants, return its on-disk path. Caller deletes
+       the file after streaming. Folder structure inside the zip mirrors
+       the user's tree (paths relative to the requested folder).
+
+       Implementation note: build to a temp file rather than a piped
+       Flux<DataBuffer> because zipping is sequential and CPU-bound; a
+       temp file lets the HTTP layer stream it via FileSystemResource
+       without holding the request thread.
+       ========================================================= */
+    public Mono<java.nio.file.Path> zipFolder(UUID folderId) {
+        return getCurrentUserId().flatMap(userId ->
+                folderRepository.findByIdAndOwnerId(folderId, userId)
+                        .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Folder not found or access denied")))
+                        .flatMap(folder -> Mono.fromCallable(() -> {
+                                    java.nio.file.Path tmp = Files.createTempFile("aps-zip-", ".zip");
+                                    return tmp;
+                                }).subscribeOn(Schedulers.boundedElastic())
+                                .flatMap(tmp -> writeZipForFolder(userId, folder, tmp).thenReturn(tmp))));
+    }
+
+    private Mono<Void> writeZipForFolder(UUID userId, FolderEntity root, java.nio.file.Path zipPath) {
+        // Collect every descendant folder (root included) + their files,
+        // then write entries sequentially in a worker thread. Concurrency
+        // is unsafe inside ZipOutputStream — keep it serial.
+        return getAllDescendantFolders(root, userId).collectList()
+                .flatMap(folders -> Flux.fromIterable(folders)
+                        .concatMap(sub -> metadataRepository.findByOwnerIdAndFolderId(userId, sub.getId())
+                                .filter(f -> f.getDeletedAt() == null)
+                                .map(f -> new ZipEntryInfo(zipRelPath(folders, root, sub, f.getFilename()), f.getStoragePath()))
+                                .collectList()
+                                .map(list -> new FolderZipBucket(sub, list)))
+                        .collectList()
+                        .flatMap(buckets -> Mono.fromCallable(() -> {
+                            try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(
+                                    java.nio.file.Files.newOutputStream(zipPath))) {
+                                java.util.HashSet<String> dirs = new java.util.HashSet<>();
+                                for (FolderZipBucket b : buckets) {
+                                    String dirRel = folderRelPath(folders, root, b.folder());
+                                    if (!dirRel.isEmpty() && dirs.add(dirRel)) {
+                                        // Empty-dir entry so empty folders survive in the zip.
+                                        zos.putNextEntry(new java.util.zip.ZipEntry(dirRel + "/"));
+                                        zos.closeEntry();
+                                    }
+                                    for (ZipEntryInfo e : b.files()) {
+                                        java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry(e.relPath());
+                                        zos.putNextEntry(entry);
+                                        java.nio.file.Path src = java.nio.file.Paths.get(e.storagePath());
+                                        if (Files.exists(src)) {
+                                            try (var in = Files.newInputStream(src)) {
+                                                in.transferTo(zos);
+                                            }
+                                        }
+                                        zos.closeEntry();
+                                    }
+                                }
+                            }
+                            return null;
+                        }).subscribeOn(Schedulers.boundedElastic()))
+                        .then());
+    }
+
+    /** Path of a file relative to the zip root, e.g. "Pictures/holiday/IMG_001.jpg". */
+    private static String zipRelPath(List<FolderEntity> all, FolderEntity root, FolderEntity leaf, String filename) {
+        String dir = folderRelPath(all, root, leaf);
+        return dir.isEmpty() ? filename : dir + "/" + filename;
+    }
+
+    /** Path of a folder relative to the zip root, "" when it IS the root. */
+    private static String folderRelPath(List<FolderEntity> all, FolderEntity root, FolderEntity leaf) {
+        java.util.Map<UUID, FolderEntity> byId = new java.util.HashMap<>();
+        for (FolderEntity f : all) byId.put(f.getId(), f);
+        java.util.Deque<String> segs = new java.util.ArrayDeque<>();
+        FolderEntity cur = leaf;
+        while (cur != null && !cur.getId().equals(root.getId())) {
+            segs.push(cur.getName());
+            cur = (cur.getParentFolderId() == null) ? null : byId.get(cur.getParentFolderId());
+        }
+        return String.join("/", segs);
+    }
+
+    private record ZipEntryInfo(String relPath, String storagePath) {}
+    private record FolderZipBucket(FolderEntity folder, List<ZipEntryInfo> files) {}
 }

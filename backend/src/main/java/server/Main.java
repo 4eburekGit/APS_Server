@@ -10,18 +10,24 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
 import org.springframework.data.r2dbc.repository.config.EnableR2dbcRepositories;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
+import io.r2dbc.pool.ConnectionPool;
+import io.r2dbc.pool.ConnectionPoolConfiguration;
 import io.r2dbc.spi.ConnectionFactories;
 import io.r2dbc.spi.ConnectionFactory;
 import io.r2dbc.spi.ConnectionFactoryOptions;
 
+import java.time.Duration;
+
 @SpringBootApplication
 @EnableR2dbcRepositories(entityOperationsRef = "r2dbcEntityTemplate")
 @EnableConfigurationProperties(R2dbcProperties.class)
+@EnableScheduling
 public class Main {
 	
 	@Bean
@@ -48,10 +54,29 @@ public class Main {
 	@Value("${spring.r2dbc.password:1417}")
 	private String pwd;
 	
+	// Pool config — overridable via env / application.yml.
+	// Defaults are sane for a single-node prototype under load-test
+	// (target ~50 concurrent R2DBC operations, well below Postgres
+	// max_connections=200 set in docker-compose).
+	@Value("${spring.r2dbc.pool.initial-size:10}")
+	private int poolInitialSize;
+
+	@Value("${spring.r2dbc.pool.max-size:50}")
+	private int poolMaxSize;
+
+	@Value("${spring.r2dbc.pool.max-acquire-time:30s}")
+	private Duration poolMaxAcquireTime;
+
+	@Value("${spring.r2dbc.pool.max-idle-time:15m}")
+	private Duration poolMaxIdleTime;
+
+	@Value("${spring.r2dbc.pool.max-life-time:30m}")
+	private Duration poolMaxLifeTime;
+
 	@Bean
 	@Primary
     public ConnectionFactory connectionFactory () {
-		return ConnectionFactories.get(ConnectionFactoryOptions.builder()
+		ConnectionFactory base = ConnectionFactories.get(ConnectionFactoryOptions.builder()
                 .option(ConnectionFactoryOptions.DRIVER, driver)
                 .option(ConnectionFactoryOptions.HOST, host)
                 .option(ConnectionFactoryOptions.PORT, port)
@@ -59,6 +84,16 @@ public class Main {
                 .option(ConnectionFactoryOptions.USER, user)
                 .option(ConnectionFactoryOptions.PASSWORD, pwd)
                 .build());
+
+		ConnectionPoolConfiguration poolConfig = ConnectionPoolConfiguration.builder(base)
+				.initialSize(poolInitialSize)
+				.maxSize(poolMaxSize)
+				.maxAcquireTime(poolMaxAcquireTime)
+				.maxIdleTime(poolMaxIdleTime)
+				.maxLifeTime(poolMaxLifeTime)
+				.build();
+
+		return new ConnectionPool(poolConfig);
     }
 	
 	public static void main(String[] args) {

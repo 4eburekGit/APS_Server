@@ -20,6 +20,7 @@ public class AuthService {
     private final JWTHandler jwtHandler;
     private final ReactiveAuthenticationManager authenticationManager;
     private final FolderController folderCtl;
+    private final TotpService totpService;
 
     public Mono<String> register(String username, String password) {
         UserEntity user = new UserEntity();
@@ -35,15 +36,35 @@ public class AuthService {
     }
 
     public Mono<String> login(String username, String password) {
-        // Unified login: accepts both regular users and admins. The auth manager
-        // (backed by UserDataService, which searches `users` then `admins`) picks
-        // whichever table holds the credentials. The JWT carries the matched
-        // principal's role claim, so the SPA can route based on it without the
-        // user having to tell us upfront which kind of account they have.
+        return login(username, password, null);
+    }
+
+    /**
+     * Unified login: accepts both regular users and admins. If the user has
+     * 2FA enrolled (totp_enabled=true), a 6-digit {@code totpCode} from their
+     * authenticator app is required and validated AFTER the password check.
+     * Failure → 401 with reason "TOTP required" or "TOTP invalid".
+     */
+    public Mono<String> login(String username, String password, String totpCode) {
         return authenticationManager.authenticate(
                         new UsernamePasswordAuthenticationToken(username, password)
                 )
                 .map(auth -> (IdentifiedPrincipal) auth.getPrincipal())
+                .flatMap(principal -> {
+                    if (!(principal instanceof UserEntity user)
+                            || !Boolean.TRUE.equals(user.getTotpEnabled())) {
+                        return Mono.just(principal);
+                    }
+                    if (totpCode == null || totpCode.isBlank()) {
+                        return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                                org.springframework.http.HttpStatus.UNAUTHORIZED, "TOTP required"));
+                    }
+                    if (!totpService.verify(user.getTotpSecret(), totpCode)) {
+                        return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                                org.springframework.http.HttpStatus.UNAUTHORIZED, "TOTP invalid"));
+                    }
+                    return Mono.just(principal);
+                })
                 .map(jwtHandler::generateToken);
     }
     
