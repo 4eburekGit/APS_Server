@@ -32,8 +32,17 @@ class FileControllerTest {
     @Mock
     private FileMetaRepo metadataRepository;
 
+    @Mock
+    private AuditService auditService;
+
     @InjectMocks
     private FileController fileController;
+
+    /** Audit calls always succeed (Mono.empty) — keeps controller chain alive. */
+    private void stubAuditOk() {
+        when(auditService.record(any(), anyString(), anyString(), any(), any()))
+                .thenReturn(Mono.empty());
+    }
 
     // ── downloadMetadata ──────────────────────────────────────────────────────
 
@@ -74,8 +83,9 @@ class FileControllerTest {
         meta.setStoragePath("/tmp/image.png");
 
         when(storageController.getFileMetadata(id)).thenReturn(Mono.just(meta));
+        stubAuditOk();
 
-        StepVerifier.create(fileController.downloadFile(id))
+        StepVerifier.create(fileController.downloadFile(id, null))
                 .expectNextMatches(resp ->
                         resp.getStatusCode() == HttpStatus.OK &&
                         "image/png".equals(resp.getHeaders().getContentType().toString()))
@@ -89,7 +99,7 @@ class FileControllerTest {
                 .thenReturn(Mono.error(new org.springframework.web.server.ResponseStatusException(
                         HttpStatus.NOT_FOUND, "File not found")));
 
-        StepVerifier.create(fileController.downloadFile(id))
+        StepVerifier.create(fileController.downloadFile(id, null))
                 .expectError(org.springframework.web.server.ResponseStatusException.class)
                 .verify();
     }
@@ -104,8 +114,9 @@ class FileControllerTest {
         meta.setFilename("upload.txt");
 
         when(storageController.saveFile(filePart, null)).thenReturn(Mono.just(meta));
+        stubAuditOk();
 
-        StepVerifier.create(fileController.uploadFileToRoot(Mono.just(filePart)))
+        StepVerifier.create(fileController.uploadFileToRoot(Mono.just(filePart), null))
                 .expectNext(meta)
                 .verifyComplete();
     }
@@ -271,8 +282,9 @@ class FileControllerTest {
 
         when(storageController.getFileMetadata(id)).thenReturn(Mono.just(meta));
         when(storageController.deleteFile(id)).thenReturn(Mono.empty());
+        stubAuditOk();
 
-        StepVerifier.create(fileController.deleteFile(id))
+        StepVerifier.create(fileController.deleteFile(id, null))
                 .expectNextMatches(resp ->
                         resp.getStatusCode() == HttpStatus.OK &&
                         "Successfully deleted file".equals(resp.getBody()))
@@ -286,7 +298,7 @@ class FileControllerTest {
                 .thenReturn(Mono.error(new org.springframework.web.server.ResponseStatusException(
                         HttpStatus.NOT_FOUND, "File not found")));
 
-        StepVerifier.create(fileController.deleteFile(id))
+        StepVerifier.create(fileController.deleteFile(id, null))
                 .expectError(org.springframework.web.server.ResponseStatusException.class)
                 .verify();
     }
@@ -347,9 +359,9 @@ class FileControllerTest {
         root.setName("root");
         FolderController.FolderContent content = new FolderController.FolderContent(root, List.of(), List.of());
 
-        when(folderController.getRootContent()).thenReturn(Mono.just(content));
+        when(folderController.getRootContent(any(FolderController.SortSpec.class))).thenReturn(Mono.just(content));
 
-        StepVerifier.create(fileController.getRootContent())
+        StepVerifier.create(fileController.getRootContent(null, null))
                 .expectNextMatches(c -> c.subFolders().isEmpty() && c.files().isEmpty())
                 .verifyComplete();
     }
@@ -377,9 +389,9 @@ class FileControllerTest {
         folder.setId(folderId);
         FolderController.FolderContent content = new FolderController.FolderContent(folder, List.of(), List.of());
 
-        when(folderController.getFolderContent(folderId)).thenReturn(Mono.just(content));
+        when(folderController.getFolderContent(eq(folderId), any(FolderController.SortSpec.class))).thenReturn(Mono.just(content));
 
-        StepVerifier.create(fileController.getFolderContent(folderId))
+        StepVerifier.create(fileController.getFolderContent(folderId, null, null))
                 .expectNext(content)
                 .verifyComplete();
     }
@@ -460,9 +472,9 @@ class FileControllerTest {
         bin.setName("bin");
         FolderController.FolderContent content = new FolderController.FolderContent(bin, List.of(), List.of());
 
-        when(folderController.getBinContent()).thenReturn(Mono.just(content));
+        when(folderController.getBinContent(any(FolderController.SortSpec.class))).thenReturn(Mono.just(content));
 
-        StepVerifier.create(fileController.getBinContent())
+        StepVerifier.create(fileController.getBinContent(null, null))
                 .expectNext(content)
                 .verifyComplete();
     }

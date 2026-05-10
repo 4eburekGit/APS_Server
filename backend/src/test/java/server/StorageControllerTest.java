@@ -967,7 +967,12 @@ class StorageControllerTest {
         Files.writeString(fakeFilePath.resolve("child.txt"), "content"); // non-empty
 
         FileMetaEntity meta = buildFileMeta(fileId, user.getId(), "stuck.txt", Instant.now());
-        meta.setStoragePath(tempDir.resolve("stuck.txt").toString());
+        // Purge refactor (force/strict split): purge now reads the actual
+        // storage_path first (it works for files inside trashed folders
+        // where the path may be deeper than bin_<uid>/<filename>). Point
+        // storage_path at the non-empty directory so deleteIfExists trips
+        // DirectoryNotEmptyException as the test expects.
+        meta.setStoragePath(fakeFilePath.toString());
 
         mockDbSelectOneChain(Mono.just(meta));
         // Must stub DELETE so the .then(databaseClient.sql("DELETE...").bind(...)) assembly doesn't NPE

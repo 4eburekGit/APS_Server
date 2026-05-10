@@ -655,6 +655,24 @@ class FolderControllerTest {
                 .verify();
     }
 
+    /**
+     * Stub the recursive-CTE SELECT used by {@link FolderController#purgeFolder}
+     * to return the supplied list of file IDs. Fluent chain:
+     *   databaseClient.sql(...).bind("owner",...).bind("rootId",...)
+     *     .map(...).all()  →  Flux<UUID>
+     */
+    @SuppressWarnings("unchecked")
+    private void mockSubtreeFileIds(java.util.UUID... ids) {
+        org.springframework.r2dbc.core.DatabaseClient.GenericExecuteSpec spec =
+                mock(org.springframework.r2dbc.core.DatabaseClient.GenericExecuteSpec.class,
+                        org.mockito.Answers.RETURNS_SELF);
+        lenient().when(databaseClient.sql(anyString())).thenReturn(spec);
+        org.springframework.r2dbc.core.RowsFetchSpec<UUID> rows =
+                mock(org.springframework.r2dbc.core.RowsFetchSpec.class);
+        lenient().when(spec.map(any(java.util.function.Function.class))).thenReturn(rows);
+        lenient().when(rows.all()).thenReturn(Flux.fromArray(ids));
+    }
+
     @Test
     void purgeFolder_emptyFolder_shouldDeleteFolderFromRepo() throws IOException {
         UserEntity user = buildUser();
@@ -666,13 +684,13 @@ class FolderControllerTest {
         folder.setOwnerId(user.getId());
         folder.setParentFolderId(null);
 
-        // Create the directory structure so Files.deleteIfExists works
+        // Create the directory structure so wipeDirectory has something to walk
         Path folderPath = tempDir.resolve(user.getId().toString()).resolve("empty");
         Files.createDirectories(folderPath);
 
         when(folderRepo.findByIdAndOwnerId(folderId, user.getId())).thenReturn(Mono.just(folder));
-        when(folderRepo.findByOwnerIdAndParentFolderId(user.getId(), folderId)).thenReturn(Flux.empty());
-        when(fileMetaRepo.findByOwnerIdAndFolderId(user.getId(), folderId)).thenReturn(Flux.empty());
+        // Recursive subtree query returns no file IDs.
+        mockSubtreeFileIds();
         when(folderRepo.deleteById(folderId)).thenReturn(Mono.empty());
 
         StepVerifier.create(withUser(folderController.purgeFolder(folderId), user))
@@ -695,14 +713,12 @@ class FolderControllerTest {
         Path folderPath = tempDir.resolve(user.getId().toString()).resolve("bin");
         Files.createDirectories(folderPath);
 
-        FileMetaEntity fileMeta = new FileMetaEntity();
-        fileMeta.setId(fileId);
-        fileMeta.setFilename("file.txt");
-
         when(folderRepo.findByIdAndOwnerId(folderId, user.getId())).thenReturn(Mono.just(folder));
-        when(folderRepo.findByOwnerIdAndParentFolderId(user.getId(), folderId)).thenReturn(Flux.empty());
-        when(fileMetaRepo.findByOwnerIdAndFolderId(user.getId(), folderId)).thenReturn(Flux.just(fileMeta));
-        when(storageCtl.purgeFile(fileId)).thenReturn(Mono.empty());
+        // Recursive subtree query returns one file id.
+        mockSubtreeFileIds(fileId);
+        // FolderController now calls purgeFileForce (skips deleted_at guard
+        // for files inside a trashed folder).
+        when(storageCtl.purgeFileForce(fileId)).thenReturn(Mono.empty());
         when(folderRepo.deleteById(folderId)).thenReturn(Mono.empty());
 
         StepVerifier.create(withUser(folderController.purgeFolder(folderId), user))
@@ -710,7 +726,11 @@ class FolderControllerTest {
     }
 
     @Test
-    void purgeFolder_whenDeleteIfExistsFails_shouldError() throws IOException {
+    void purgeFolder_nonEmptyDir_isToleratedNotErrored() throws IOException {
+        // After the purge refactor, the on-disk wipe is best-effort:
+        // Files.walk + deleteIfExists with a per-path try/catch. Even if a
+        // path can't be removed, the user's purge succeeds (DB is already
+        // consistent) — no 404 propagated. Verify that.
         UserEntity user = buildUser();
         UUID folderId = UUID.randomUUID();
 
@@ -720,21 +740,16 @@ class FolderControllerTest {
         folder.setOwnerId(user.getId());
         folder.setParentFolderId(null);
 
-        // Create the directory with a file inside so Files.deleteIfExists throws DirectoryNotEmptyException
         Path folderPath = tempDir.resolve(user.getId().toString()).resolve("nonemptydir");
         Files.createDirectories(folderPath);
-        Files.writeString(folderPath.resolve("file.txt"), "content"); // makes dir non-empty
+        Files.writeString(folderPath.resolve("file.txt"), "content");
 
         when(folderRepo.findByIdAndOwnerId(folderId, user.getId())).thenReturn(Mono.just(folder));
-        when(folderRepo.findByOwnerIdAndParentFolderId(user.getId(), folderId)).thenReturn(Flux.empty());
-        when(fileMetaRepo.findByOwnerIdAndFolderId(user.getId(), folderId)).thenReturn(Flux.empty());
-        // .then(folderRepository.deleteById(...)) evaluates eagerly as argument — stub to avoid NPE
+        mockSubtreeFileIds();   // Subtree query → no orphan files.
         lenient().when(folderRepo.deleteById(any(UUID.class))).thenReturn(Mono.empty());
 
         StepVerifier.create(withUser(folderController.purgeFolder(folderId), user))
-                .expectErrorMatches(e -> e instanceof ResponseStatusException &&
-                        ((ResponseStatusException) e).getStatusCode() == HttpStatus.NOT_FOUND)
-                .verify();
+                .verifyComplete();
     }
 
     // ── IOException error paths ───────────────────────────────────────────────
@@ -828,9 +843,9 @@ class FolderControllerTest {
     void getAllDescendantFolders_withNullIdChild_shortCircuits() {
         // Covers the null-id branch in getAllDescendantFolders (the .expandDeep
         // step short-circuits to Mono.empty() when id is null). After the
-        // deleteFolder rewrite this branch is reached via purgeFolder instead;
-        // we exercise it here by handing purgeFolder a tree where one
-        // descendant carries a null id (legacy data).
+        // purge refactor we no longer reach the branch via purgeFolder — purge
+        // uses a recursive CTE in SQL instead. Exercise it via deleteFolder,
+        // which still expandDeeps the subtree to copy on-disk paths.
         UserEntity user = buildUser();
         UUID folderId = UUID.randomUUID();
 
@@ -838,20 +853,29 @@ class FolderControllerTest {
         folder.setId(folderId);
         folder.setName("docs");
         folder.setOwnerId(user.getId());
-        folder.setParentFolderId(null); // system-like, but purge accepts it
+        folder.setParentFolderId(UUID.randomUUID()); // non-null so deleteFolder doesn't 403
 
         FolderEntity nullIdChild = new FolderEntity();
         nullIdChild.setId(null);
         nullIdChild.setOwnerId(user.getId());
 
         when(folderRepo.findByIdAndOwnerId(folderId, user.getId())).thenReturn(Mono.just(folder));
-        when(folderRepo.findByOwnerIdAndParentFolderId(user.getId(), folderId))
+        // The expandDeep null-guard fires before any side-effect, so the test
+        // just needs to assert that traversal terminates rather than hangs.
+        lenient().when(folderRepo.findByOwnerIdAndParentFolderId(user.getId(), folderId))
                 .thenReturn(Flux.just(nullIdChild));
-
-        // The null-id child causes a NullPointerException downstream (purgeFilesInFolder
-        // calls folderId.toString()), proving the .expand branch was traversed.
-        StepVerifier.create(withUser(folderController.purgeFolder(folderId), user))
-                .expectError(NullPointerException.class)
+        // Stop the rest of deleteFolder before it touches disk / DB further.
+        FolderEntity bin = new FolderEntity();
+        bin.setId(UUID.randomUUID());
+        bin.setName("bin_" + user.getId());
+        bin.setOwnerId(user.getId());
+        bin.setParentFolderId(null);
+        lenient().when(folderRepo.findByOwnerIdAndParentFolderIdIsNullAndName(any(UUID.class), anyString()))
+                .thenReturn(Mono.just(bin));
+        // Any failure downstream is acceptable — we only verify the null-id branch
+        // doesn't infinite-loop the expand operator.
+        StepVerifier.create(withUser(folderController.deleteFolder(folderId), user))
+                .expectError()
                 .verify();
     }
 
@@ -1625,6 +1649,120 @@ class FolderControllerTest {
 
         StepVerifier.create(withUser(folderController.copyFolder(folderId, targetId), user))
                 .expectNextMatches(f -> "docs (копия)".equals(f.getName()))
+                .verifyComplete();
+    }
+
+    // ── server-side sort (FR#23, NFT#24) ──────────────────────────────────────
+
+    @Test
+    void sortSpec_parseRejectsBadInput() {
+        ResponseStatusException e1 = org.junit.jupiter.api.Assertions.assertThrows(
+                ResponseStatusException.class,
+                () -> FolderController.SortSpec.parse("invalid", null));
+        org.junit.jupiter.api.Assertions.assertEquals(HttpStatus.BAD_REQUEST, e1.getStatusCode());
+
+        ResponseStatusException e2 = org.junit.jupiter.api.Assertions.assertThrows(
+                ResponseStatusException.class,
+                () -> FolderController.SortSpec.parse("name", "sideways"));
+        org.junit.jupiter.api.Assertions.assertEquals(HttpStatus.BAD_REQUEST, e2.getStatusCode());
+    }
+
+    @Test
+    void sortSpec_parseDefaultsToNameAsc() {
+        FolderController.SortSpec s = FolderController.SortSpec.parse(null, null);
+        org.junit.jupiter.api.Assertions.assertEquals(FolderController.SortField.NAME, s.field());
+        org.junit.jupiter.api.Assertions.assertEquals(FolderController.SortDirection.ASC, s.dirEnum());
+        org.junit.jupiter.api.Assertions.assertEquals("ASC", s.direction());
+    }
+
+    @Test
+    void sortSpec_parseAllVariants() {
+        org.junit.jupiter.api.Assertions.assertEquals(FolderController.SortField.SIZE,
+                FolderController.SortSpec.parse("size", "asc").field());
+        org.junit.jupiter.api.Assertions.assertEquals(FolderController.SortField.DATE,
+                FolderController.SortSpec.parse("date", "desc").field());
+        org.junit.jupiter.api.Assertions.assertEquals(FolderController.SortDirection.DESC,
+                FolderController.SortSpec.parse("name", "desc").dirEnum());
+    }
+
+    @Test
+    void getFolderContent_shouldSortFilesBySizeDesc() {
+        UserEntity user = buildUser();
+        UUID folderId = UUID.randomUUID();
+        FolderEntity folder = new FolderEntity();
+        folder.setId(folderId);
+        folder.setOwnerId(user.getId());
+
+        FileMetaEntity small = new FileMetaEntity();
+        small.setId(UUID.randomUUID()); small.setFilename("a.bin");
+        small.setSize(100L);
+        FileMetaEntity big = new FileMetaEntity();
+        big.setId(UUID.randomUUID()); big.setFilename("b.bin");
+        big.setSize(99_999L);
+
+        when(folderRepo.findByIdAndOwnerId(folderId, user.getId())).thenReturn(Mono.just(folder));
+        when(folderRepo.findByOwnerIdAndParentFolderId(user.getId(), folderId)).thenReturn(Flux.empty());
+        // Repo returns small first, big second; sort=size&dir=desc must flip.
+        when(fileMetaRepo.findByOwnerIdAndFolderId(user.getId(), folderId))
+                .thenReturn(Flux.just(small, big));
+
+        FolderController.SortSpec spec = FolderController.SortSpec.parse("size", "desc");
+        StepVerifier.create(withUser(folderController.getFolderContent(folderId, spec), user))
+                .expectNextMatches(c -> c.files().size() == 2
+                        && c.files().get(0).getSize() == 99_999L
+                        && c.files().get(1).getSize() == 100L)
+                .verifyComplete();
+    }
+
+    @Test
+    void getFolderContent_shouldSortFoldersByNameAsc() {
+        UserEntity user = buildUser();
+        UUID folderId = UUID.randomUUID();
+        FolderEntity parent = new FolderEntity();
+        parent.setId(folderId);
+        parent.setOwnerId(user.getId());
+
+        FolderEntity z = new FolderEntity(); z.setName("zeta"); z.setId(UUID.randomUUID());
+        FolderEntity a = new FolderEntity(); a.setName("alpha"); a.setId(UUID.randomUUID());
+
+        when(folderRepo.findByIdAndOwnerId(folderId, user.getId())).thenReturn(Mono.just(parent));
+        when(folderRepo.findByOwnerIdAndParentFolderId(user.getId(), folderId))
+                .thenReturn(Flux.just(z, a));   // out-of-order
+        when(fileMetaRepo.findByOwnerIdAndFolderId(user.getId(), folderId)).thenReturn(Flux.empty());
+
+        StepVerifier.create(withUser(folderController.getFolderContent(folderId,
+                        FolderController.SortSpec.parse("name", "asc")), user))
+                .expectNextMatches(c -> c.subFolders().size() == 2
+                        && "alpha".equals(c.subFolders().get(0).getName())
+                        && "zeta".equals(c.subFolders().get(1).getName()))
+                .verifyComplete();
+    }
+
+    @Test
+    void getFolderContent_shouldSortFilesByDate() {
+        UserEntity user = buildUser();
+        UUID folderId = UUID.randomUUID();
+        FolderEntity folder = new FolderEntity();
+        folder.setId(folderId);
+        folder.setOwnerId(user.getId());
+
+        FileMetaEntity older = new FileMetaEntity();
+        older.setId(UUID.randomUUID()); older.setFilename("older.bin"); older.setSize(1L);
+        older.setUploadedAt(Instant.parse("2026-01-01T00:00:00Z"));
+        FileMetaEntity newer = new FileMetaEntity();
+        newer.setId(UUID.randomUUID()); newer.setFilename("newer.bin"); newer.setSize(2L);
+        newer.setUpdatedAt(Instant.parse("2026-05-01T00:00:00Z"));
+        newer.setUploadedAt(Instant.parse("2026-04-01T00:00:00Z"));
+
+        when(folderRepo.findByIdAndOwnerId(folderId, user.getId())).thenReturn(Mono.just(folder));
+        when(folderRepo.findByOwnerIdAndParentFolderId(user.getId(), folderId)).thenReturn(Flux.empty());
+        when(fileMetaRepo.findByOwnerIdAndFolderId(user.getId(), folderId))
+                .thenReturn(Flux.just(older, newer));
+
+        StepVerifier.create(withUser(folderController.getFolderContent(folderId,
+                        FolderController.SortSpec.parse("date", "asc")), user))
+                .expectNextMatches(c -> c.files().get(0).getFilename().equals("older.bin")
+                        && c.files().get(1).getFilename().equals("newer.bin"))
                 .verifyComplete();
     }
 }

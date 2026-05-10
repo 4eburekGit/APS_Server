@@ -51,7 +51,9 @@ class AuthControllerTest {
 
     @Test
     void login_shouldWrapTokenInMap() {
-        when(authService.login(anyString(), anyString())).thenReturn(Mono.just("jwt-token"));
+        // Login now takes 3 args (totpCode is null when 2FA not enabled).
+        when(authService.login(anyString(), anyString(), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn(Mono.just("jwt-token"));
 
         StepVerifier.create(authController.login(new AuthController.AuthRequest("alice", "secret")))
                 .expectNext(Map.of("token", "jwt-token"))
@@ -60,7 +62,7 @@ class AuthControllerTest {
 
     @Test
     void login_shouldPropagateError() {
-        when(authService.login(anyString(), anyString()))
+        when(authService.login(anyString(), anyString(), org.mockito.ArgumentMatchers.isNull()))
                 .thenReturn(Mono.error(new RuntimeException("Bad credentials")));
 
         StepVerifier.create(authController.login(new AuthController.AuthRequest("alice", "wrong")))
